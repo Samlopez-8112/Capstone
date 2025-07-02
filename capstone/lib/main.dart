@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_speed_dial/flutter_speed_dial.dart';
 
 void main() {
   runApp(const MyApp());
@@ -117,6 +118,50 @@ class _MyHomePageState extends State<MyHomePage> {
         tooltip: 'Increment',
         child: const Icon(Icons.add),
       ), // This trailing comma makes auto-formatting nicer for build methods.
+    );
+  }
+}
+
+// Speed Dial widget, still unfinished and left ti integrate with firebase or superbase that we use
+class LocationSpeedDial extends StatelessWidget {
+  const LocationSpeedDial({super.key});
+
+  void _handleTap(BuildContext context, String type) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('Marking location as $type')),
+    );
+    // TO DO: integrate with map and Firebase
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return SpeedDial(
+      icon: Icons.place,
+      activeIcon: Icons.close,
+      backgroundColor: Colors.blueAccent,
+      spacing: 12,
+      children: [
+        SpeedDialChild(
+          child: const Icon(Icons.home),
+          label: 'Mark as Home',
+          onTap: () => _handleTap(context, 'Home'),
+        ),
+        SpeedDialChild(
+          child: const Icon(Icons.work),
+          label: 'Mark as Work',
+          onTap: () => _handleTap(context, 'Work'),
+        ),
+        SpeedDialChild(
+          child: const Icon(Icons.star),
+          label: 'Add to Favourites',
+          onTap: () => _handleTap(context, 'Favourite'),
+        ),
+        SpeedDialChild(
+          child: const Icon(Icons.push_pin),
+          label: 'Pin Location',
+          onTap: () => _handleTap(context, 'Pin'),
+        ),
+      ],
     );
   }
 }
