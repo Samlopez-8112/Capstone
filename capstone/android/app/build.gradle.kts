@@ -24,8 +24,8 @@ dependencies {
 
 android {
     namespace = "com.example.capstone"
-    compileSdk = flutter.compileSdkVersion
-    ndkVersion = flutter.ndkVersion
+    compileSdk = 35
+    ndkVersion = "27.0.12077973" //the minimum for firebase features, can be downloaded manually in android studio
 
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_11
