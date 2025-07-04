@@ -21,6 +21,13 @@ class _HomePageState extends State<HomePage> {
   StreamSubscription? userPositionStream; // used for GPS updates
   bool isFollowingUser = true; // option for camera following
 
+  final TextEditingController _searchController = TextEditingController();
+
+  void _handleSearch(String query) {
+    // TODO: Blend mapbox geocoding for searches
+    debugPrint('Searching for: $query');
+  }
+
   @override
   void initState() {
  
@@ -34,23 +41,41 @@ class _HomePageState extends State<HomePage> {
     super.dispose();
   }
 
+  // Build the layout
   @override
-  Widget build(BuildContext context) { // screen is a scaffold with map widget and button
-    return Scaffold(
-      body: mb.MapWidget( // displays the map
-        onMapCreated: _onMapCreated,
-        ),
-        floatingActionButton: FloatingActionButton( // button for toggling camera follow
-          onPressed: () {
-            setState(() {
-              isFollowingUser = !isFollowingUser;
-            });
-          },
-          child: Icon(
-            isFollowingUser ? Icons.location_searching : Icons.location_disabled
-          )
-        )
-      );
+  Widget build(BuildContext context) {
+    return Scaffold( // scaffold style layout
+      body:Stack( //stack contains search bar and mapbox widget
+        children: [
+          mb.MapWidget( //call map at beginning of stack and setup
+            onMapCreated: _onMapCreated,
+          ),
+          Positioned( 
+            top: 50,
+            left: 15,
+            right: 15,
+            child: Container( // white bar positioned at top of screen
+              padding: EdgeInsets.symmetric(horizontal: 12),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(10),
+                boxShadow: [BoxShadow(blurRadius: 5, color: Colors.black26)],
+              ),
+              child: TextField( // text field within box
+                controller: _searchController,
+                onSubmitted: _handleSearch,
+                decoration: InputDecoration(
+                  hintText: 'Search',
+                  border: InputBorder.none,
+                  suffixIcon: Icon(Icons.search),
+                  contentPadding: EdgeInsets.symmetric(vertical: 14),
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
   void _onMapCreated( // call this function when map is created
