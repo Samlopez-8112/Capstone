@@ -16,11 +16,11 @@ void main() async{
 }
 
 Future<void> setup() async{
-  await dotenv.load(
+  await dotenv.load( // grab .env from discord, name ".env", and insert it in the project directory (alongside pubspec.yaml)
     fileName: ".env",
   );
   MapboxOptions.setAccessToken(
-    dotenv.env["MAPBOX_ACCESS_TOKEN"]!, //token can be found in capstone/.env
+    dotenv.env["MAPBOX_ACCESS_TOKEN"]!, // .env contains api tokens
     );
 }
 
