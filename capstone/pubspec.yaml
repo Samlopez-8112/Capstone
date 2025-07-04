@@ -30,7 +30,9 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
-  firebase_core: ^2.27.0
+  cloud_firestore: ^4.13.0
+  firebase_auth: ^4.15.0
+  firebase_core: ^2.30.0
 
   #mapbox plugins
   mapbox_maps_flutter: ^2.9.0
