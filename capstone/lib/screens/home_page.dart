@@ -48,16 +48,6 @@ class _HomePageState extends State<HomePage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold( // scaffold style layout
-    appBar: AppBar(
-      title: const Text('Logout'),
-      actions: [
-        IconButton(icon: const Icon(Icons.logout),
-        onPressed: () async{
-          await FirebaseAuth.instance.signOut();
-        },
-      ),
-    ],
-  ),
       body:Stack( //stack contains search bar and mapbox widget
         children: [
           mb.MapWidget( //call map at beginning of stack and setup
@@ -84,6 +74,22 @@ class _HomePageState extends State<HomePage> {
                   contentPadding: EdgeInsets.symmetric(vertical: 14),
                 ),
               ),
+            ),
+          ),
+           Positioned(
+            top: 110,
+            right: 15,
+            child: ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.white,
+                foregroundColor: Colors.black,
+                elevation: 4,
+                padding: const EdgeInsets.all(10),
+              ),
+              onPressed: () async {
+                await FirebaseAuth.instance.signOut();
+              },
+              child: const Icon(Icons.logout),
             ),
           ),
         ],
