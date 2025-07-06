@@ -3,10 +3,13 @@
 
 // See this tutorial for a better understanding: https://youtu.be/UafQ8rw1V-Y?si=kFv63X5jXPSJ4Vbl
 import 'dart:async';
+import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart' as gl; 
 import 'package:permission_handler/permission_handler.dart';
 import 'package:mapbox_maps_flutter/mapbox_maps_flutter.dart' as mb;
+import 'package:firebase_auth/firebase_auth.dart';
+
 
 // imports for mapbox and geolocator must be 'as xx' because they share some function names
 class HomePage extends StatefulWidget { 
@@ -45,6 +48,16 @@ class _HomePageState extends State<HomePage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold( // scaffold style layout
+    appBar: AppBar(
+      title: const Text('Logout'),
+      actions: [
+        IconButton(icon: const Icon(Icons.logout),
+        onPressed: () async{
+          await FirebaseAuth.instance.signOut();
+        },
+      ),
+    ],
+  ),
       body:Stack( //stack contains search bar and mapbox widget
         children: [
           mb.MapWidget( //call map at beginning of stack and setup
