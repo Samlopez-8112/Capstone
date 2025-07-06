@@ -7,6 +7,25 @@
   "client": [
     {
       "client_info": {
+        "mobilesdk_app_id": "1:729888988317:android:0965550c65d5c5f31ec874",
+        "android_client_info": {
+          "package_name": "com.SafeRoute.capstone"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBcpBYqLX-HZwGlC7_9fq6F8XQUrKHG9Yo"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    },
+    {
+      "client_info": {
         "mobilesdk_app_id": "1:729888988317:android:790822a347d4c0e61ec874",
         "android_client_info": {
           "package_name": "com.example.capstone"

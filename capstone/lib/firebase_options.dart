@@ -52,7 +52,7 @@ class DefaultFirebaseOptions {
 
   static const FirebaseOptions android = FirebaseOptions(
     apiKey: 'AIzaSyBcpBYqLX-HZwGlC7_9fq6F8XQUrKHG9Yo',
-    appId: '1:729888988317:android:790822a347d4c0e61ec874',
+    appId: '1:729888988317:android:0965550c65d5c5f31ec874',
     messagingSenderId: '729888988317',
     projectId: 'capstoneproject-sf2025',
     storageBucket: 'capstoneproject-sf2025.firebasestorage.app',
@@ -85,4 +85,5 @@ class DefaultFirebaseOptions {
     storageBucket: 'capstoneproject-sf2025.firebasestorage.app',
     measurementId: 'G-BPFFCYM1PN',
   );
+
 }

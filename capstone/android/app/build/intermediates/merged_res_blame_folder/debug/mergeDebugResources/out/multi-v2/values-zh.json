@@ -1,0 +1,77 @@
+{
+    "logs": [
+        {
+            "outputFile": "com.SafeRoute.capstone.app-mergeDebugResources-61:/values-zh/values-zh.xml",
+            "map": [
+                {
+                    "source": "C:\\Users\\natha\\.gradle\\caches\\8.12\\transforms\\546e204cf791e7b5ac0261e5af092f95\\transformed\\jetified-maps-compass-11.13.0\\res\\values-zh\\values-zh.xml",
+                    "from": {
+                        "startLines": "2",
+                        "startColumns": "4",
+                        "startOffsets": "55",
+                        "endColumns": "80",
+                        "endOffsets": "131"
+                    },
+                    "to": {
+                        "startLines": "15",
+                        "startColumns": "4",
+                        "startOffsets": "1159",
+                        "endColumns": "80",
+                        "endOffsets": "1235"
+                    }
+                },
+                {
+                    "source": "C:\\Users\\natha\\.gradle\\caches\\8.12\\transforms\\528d015f5479654b7976bd99618fa23f\\transformed\\jetified-maps-logo-11.13.0\\res\\values-zh\\values-zh.xml",
+                    "from": {
+                        "startLines": "2",
+                        "startColumns": "4",
+                        "startOffsets": "55",
+                        "endColumns": "133",
+                        "endOffsets": "184"
+                    },
+                    "to": {
+                        "startLines": "20",
+                        "startColumns": "4",
+                        "startOffsets": "1589",
+                        "endColumns": "133",
+                        "endOffsets": "1718"
+                    }
+                },
+                {
+                    "source": "C:\\Users\\natha\\.gradle\\caches\\8.12\\transforms\\1fd24a0c83b4e8ff5c390954a730569a\\transformed\\jetified-android-11.13.0\\res\\values-zh\\values-zh.xml",
+                    "from": {
+                        "startLines": "2,3,4",
+                        "startColumns": "4,4,4",
+                        "startOffsets": "55,117,179",
+                        "endColumns": "61,61,62",
+                        "endOffsets": "112,174,237"
+                    },
+                    "to": {
+                        "startLines": "16,17,18",
+                        "startColumns": "4,4,4",
+                        "startOffsets": "1240,1302,1364",
+                        "endColumns": "61,61,62",
+                        "endOffsets": "1297,1359,1422"
+                    }
+                },
+                {
+                    "source": "C:\\Users\\natha\\.gradle\\caches\\8.12\\transforms\\19f6634e743980ac421f7784a9b32fe4\\transformed\\jetified-maps-attribution-11.13.0\\res\\values-zh\\values-zh.xml",
+                    "from": {
+                        "startLines": "2,3,4,5,6,7,8,9,10,11,12,13,14,15",
+                        "startColumns": "4,4,4,4,4,4,4,4,4,4,4,4,4,4",
+                        "startOffsets": "55,136,217,304,462,543,622,696,803,872,940,1007,1084,1159",
+                        "endColumns": "80,80,86,157,80,78,73,106,68,67,66,76,74,161",
+                        "endOffsets": "131,212,299,457,538,617,691,798,867,935,1002,1079,1154,1316"
+                    },
+                    "to": {
+                        "startLines": "2,3,4,5,6,7,8,9,10,11,12,13,14,19",
+                        "startColumns": "4,4,4,4,4,4,4,4,4,4,4,4,4,4",
+                        "startOffsets": "55,136,217,304,462,543,622,696,803,872,940,1007,1084,1427",
+                        "endColumns": "80,80,86,157,80,78,73,106,68,67,66,76,74,161",
+                        "endOffsets": "131,212,299,457,538,617,691,798,867,935,1002,1079,1154,1584"
+                    }
+                }
+            ]
+        }
+    ]
+}
