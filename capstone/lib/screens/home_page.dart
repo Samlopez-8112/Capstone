@@ -100,6 +100,43 @@ class _HomePageState extends State<HomePage> {
               child: const Icon(Icons.logout),
             ),
           ),
+          Positioned( // track user button
+            bottom: 90,
+            right: 20,
+            child: FloatingActionButton(
+              elevation: 4,
+              onPressed: () async {
+                setState(() {
+                  isFollowingUser = !isFollowingUser; // flip following state
+                });
+
+                if (isFollowingUser && mapboxMapController != null) { // go to user's location when follow re-enabled
+                  try {
+                    final position = await gl.Geolocator.getCurrentPosition(
+                      desiredAccuracy: gl.LocationAccuracy.high,
+                    );
+                    mapboxMapController!.flyTo( // fly to the user's current location
+                      mb.CameraOptions(
+                        center: mb.Point(
+                          coordinates: mb.Position(
+                            position.longitude,
+                            position.latitude,
+                          ),
+                        ),
+                        zoom: 16,
+                      ),
+                      mb.MapAnimationOptions(duration: 500),
+                    );
+                  } catch (e) { // error catching helps emulator
+                    debugPrint('Error getting current position: $e');
+                  }
+                }
+              },
+              child: Icon( // display whether location is being tracked
+                isFollowingUser ? Icons.my_location : Icons.location_disabled,
+    ),
+  ),
+),
           // This is the new button here:
               Positioned(
                 bottom: 20,
@@ -185,7 +222,7 @@ class _HomePageState extends State<HomePage> {
                   position.latitude,
                   ),
                   ),
-                  zoom: 15, // zoom level 15; may want closer for navigation
+                  zoom: 16, // zoom level 15; may want closer for navigation
               ),
              mb.MapAnimationOptions(duration: 500), //flyto animation takes 500ms
             );
