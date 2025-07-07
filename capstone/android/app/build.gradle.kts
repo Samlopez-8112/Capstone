@@ -63,5 +63,5 @@ android {
 flutter {
     source = "../.."
 }
-
+// added for firebase connectivity
 apply(plugin = "com.google.gms.google-services")
