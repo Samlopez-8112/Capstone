@@ -20,7 +20,7 @@ void main() async{
 
 Future<void> setup() async{
   await dotenv.load( // grab .env from discord, name ".env", and insert it in the project directory (alongside pubspec.yaml)
-    fileName: ".env",
+    fileName: "envy",
   );
   MapboxOptions.setAccessToken(
     dotenv.env["MAPBOX_ACCESS_TOKEN"]!, // .env contains api tokens
