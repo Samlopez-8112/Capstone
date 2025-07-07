@@ -10,6 +10,8 @@ import 'package:permission_handler/permission_handler.dart';
 import 'package:mapbox_maps_flutter/mapbox_maps_flutter.dart' as mb;
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:capstone/widgets/saved_location_button.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+
 
 // imports for mapbox and geolocator must be 'as xx' because they share some function names
 class HomePage extends StatefulWidget { 
@@ -52,6 +54,11 @@ class _HomePageState extends State<HomePage> {
         children: [
           mb.MapWidget( //call map at beginning of stack and setup
             onMapCreated: _onMapCreated,
+            onLongTapListener: (mb.MapContentGestureContext ctx) {
+              final lat = (ctx.point.coordinates[1] as num).toDouble();
+              final lng = (ctx.point.coordinates[0] as num).toDouble();
+            _handleLongPressPin(lat, lng);
+            },
           ),
           Positioned( 
             top: 50,
@@ -76,6 +83,7 @@ class _HomePageState extends State<HomePage> {
               ),
             ),
           ),
+          // Sign out button
            Positioned(
             top: 110,
             right: 15,
@@ -93,10 +101,10 @@ class _HomePageState extends State<HomePage> {
             ),
           ),
           // This is the new button here:
-              const Positioned(
+              Positioned(
                 bottom: 20,
                 right: 20,
-                child: SavedLocationButton(),               
+                child: SavedLocationButton(onPressed: _showPinnedLocations),               
     ),
         ],
       ),
@@ -122,6 +130,21 @@ class _HomePageState extends State<HomePage> {
     } else {
       debugPrint("Location permissions denied.");
     }
+    void _onMapCreated(mb.MapboxMap controller) {
+  setState(() {
+    mapboxMapController = controller;
+  });
+  
+  controller.addInteraction(
+    mb.LongTapInteraction.onMap((ctx) {
+      final lat = (ctx.point.coordinates[1] as num).toDouble();
+      final lng = (ctx.point.coordinates[0] as num).toDouble();
+      _handleLongPressPin(lat, lng);
+    })
+  );
+  
+}
+
   }
 
   Future<void> _setupPositionTracking() async{
@@ -169,5 +192,82 @@ class _HomePageState extends State<HomePage> {
           }
         },
       );
+  }
+  //logic to display pinned locations
+  void _showPinnedLocations() async {
+  final user = FirebaseAuth.instance.currentUser;
+  if (user == null) return;
+
+  final snapshot = await FirebaseFirestore.instance
+      .collection('users')
+      .doc(user.uid)
+      .collection('pinned_locations')
+      .orderBy('timestamp', descending: true)
+      .limit(5)
+      .get();
+
+  showModalBottomSheet(
+    context: context,
+    builder: (context) {
+      return ListView(
+        children: snapshot.docs.map((doc) {
+          final lat = doc['lat'];
+          final lng = doc['lng'];
+          final time = doc['timestamp']?.toDate().toString() ?? 'Unknown time';
+          return ListTile(
+            leading: Icon(Icons.location_pin),
+            title: Text('Lat: $lat, Lng: $lng'),
+            subtitle: Text('Pinned at $time'),
+            onTap: () {
+              Navigator.pop(context);
+              mapboxMapController?.flyTo(
+                mb.CameraOptions(
+                  center: mb.Point(
+                    coordinates: mb.Position(lng, lat),
+                  ),
+                  zoom: 15,
+                ),
+                mb.MapAnimationOptions(duration: 500),
+              );
+            },
+          );
+        }).toList(),
+      );
+    },
+  );
+}
+//long press logic
+Future<void> _handleLongPressPin(double lat, double lng) async {
+  final user = FirebaseAuth.instance.currentUser;
+  if (user == null) return;
+
+  await FirebaseFirestore.instance
+      .collection('users')
+      .doc(user.uid)
+      .collection('pinned_locations')
+      .add({
+        'lat': lat.toDouble(),
+        'lng': lng.toDouble(),
+        'timestamp': FieldValue.serverTimestamp(),
+      });
+
+  ScaffoldMessenger.of(context).showSnackBar(
+    SnackBar(content: Text('Pinned location saved!')),
+  );
+}
+
+}
+//Changed button style to match purpose
+class SavedLocationButton extends StatelessWidget {
+  final VoidCallback onPressed;
+
+  const SavedLocationButton({super.key, required this.onPressed});
+
+  @override
+  Widget build(BuildContext context) {
+    return FloatingActionButton(
+      onPressed: onPressed,
+      child: Icon(Icons.bookmark),
+    );
   }
 }
