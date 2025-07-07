@@ -9,7 +9,7 @@ import 'package:geolocator/geolocator.dart' as gl;
 import 'package:permission_handler/permission_handler.dart';
 import 'package:mapbox_maps_flutter/mapbox_maps_flutter.dart' as mb;
 import 'package:firebase_auth/firebase_auth.dart';
-
+import 'package:capstone/widgets/saved_location_button.dart';
 
 // imports for mapbox and geolocator must be 'as xx' because they share some function names
 class HomePage extends StatefulWidget { 
@@ -92,6 +92,12 @@ class _HomePageState extends State<HomePage> {
               child: const Icon(Icons.logout),
             ),
           ),
+          // This is the new button here:
+              const Positioned(
+                bottom: 20,
+                right: 20,
+                child: SavedLocationButton(),               
+    ),
         ],
       ),
     );
