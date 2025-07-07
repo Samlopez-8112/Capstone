@@ -88,7 +88,7 @@ flutter:
   uses-material-design: true
 
   assets:
-    - .env # accesses .env file through this asset
+    - envy # accesses .env file through this asset
 
   #   - images/a_dot_ham.jpeg
 
