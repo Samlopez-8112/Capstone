@@ -66,7 +66,7 @@ class _HomePageState extends State<HomePage> {
               ),
               child: TextField( // text field within box
                 controller: _searchController,
-                onSubmitted: _handleSearch, 
+                onSubmitted: _handleSearch,
                 decoration: InputDecoration(
                   hintText: 'Search',
                   border: InputBorder.none,
@@ -92,47 +92,11 @@ class _HomePageState extends State<HomePage> {
               child: const Icon(Icons.logout),
             ),
           ),
-          Positioned(
-            bottom: 40,
-            right: 15,
-            child: FloatingActionButton( // track or not track user
-            elevation: 4,
-            onPressed: () async {
-              setState(() {
-                isFollowingUser = !isFollowingUser; // bool to track or not track
-              });
-
-              if (isFollowingUser && mapboxMapController != null) { // when following is re-enabled, grab position and fly to it
-                try {
-                  final position = await gl.Geolocator.getCurrentPosition(
-                    desiredAccuracy: gl.LocationAccuracy.high, // TODO: replace this deprecation
-            );
-              mapboxMapController!.flyTo( //
-                mb.CameraOptions(
-                  center: mb.Point(
-                  coordinates: mb.Position(
-                    position.longitude,
-                    position.latitude,
-                ),
-              ),
-              zoom: 16,
-            ),
-            mb.MapAnimationOptions(duration: 500),
-          );
-        } catch (e) { // handy for the emulator
-          debugPrint('Error getting current position: $e');
-        }
-      }
-    },
-    child: Icon( // swap between icons when clicked
-      isFollowingUser ? Icons.my_location : Icons.location_disabled,
-    ),
-  ),
-),
         ],
       ),
     );
   }
+
   void _onMapCreated( // call this function when map is created
                       // handles permissions and location marker
     mb.MapboxMap controller,
@@ -192,7 +156,7 @@ class _HomePageState extends State<HomePage> {
                   position.latitude,
                   ),
                   ),
-                  zoom: 16, // zoom level 15; may want closer for navigation
+                  zoom: 15, // zoom level 15; may want closer for navigation
               ),
              mb.MapAnimationOptions(duration: 500), //flyto animation takes 500ms
             );
