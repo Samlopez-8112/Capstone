@@ -20,6 +20,7 @@ class HomePage extends StatefulWidget {
   @override
   State<HomePage> createState() => _HomePageState();
 }
+
 class _HomePageState extends State<HomePage> {
 
   mb.MapboxMap? mapboxMapController; //mapbox controller is an instance of map

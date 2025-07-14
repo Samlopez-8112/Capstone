@@ -60,6 +60,8 @@ dependencies:
   # Adds support for embedding Google Maps in your Flutter app.
   # Requires an API key and platform setup (Android/iOS).
   google_maps_flutter: ^2.5.3
+  flutter_polyline_points: ^2.1.0
+  location: ^5.0.0
 
   # Provides a customizable Floating Action Button that expands into a Speed Dial menu.
   flutter_speed_dial: ^7.0.0
