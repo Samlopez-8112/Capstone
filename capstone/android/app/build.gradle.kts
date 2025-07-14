@@ -20,6 +20,8 @@ dependencies {
   implementation("androidx.multidex:multidex:2.0.1")
   // Add the dependencies for any other desired Firebase products
   // https://firebase.google.com/docs/android/setup#available-libraries
+
+    implementation(platform("org.jetbrains.kotlin:kotlin-bom:1.8.0"))
 }
 
 android {

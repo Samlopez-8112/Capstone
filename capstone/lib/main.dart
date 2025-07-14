@@ -1,4 +1,6 @@
 import 'package:capstone/screens/auth_screen.dart';
+import 'package:capstone/screens/map_page.dart';
+import 'package:capstone/screens/home_page.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:mapbox_maps_flutter/mapbox_maps_flutter.dart';
 import 'package:flutter/material.dart';
@@ -8,7 +10,6 @@ import 'firebase_options.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 
 
-import '../screens/home_page.dart';
 void main() async{
   WidgetsFlutterBinding.ensureInitialized();
   await Firebase.initializeApp(
@@ -46,7 +47,7 @@ class MyApp extends StatelessWidget {
               body: Center(child: CircularProgressIndicator()),
             );
           }else if (snapshot.hasData){
-            return const HomePage();
+            return const MapPage();
           }else{
             return const AuthScreen();
           }
