@@ -11,6 +11,7 @@ import 'package:mapbox_maps_flutter/mapbox_maps_flutter.dart' as mb;
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:capstone/widgets/saved_location_button.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import '../screens/friend_screen.dart';
 
 
 // imports for mapbox and geolocator must be 'as xx' because they share some function names
@@ -136,13 +137,34 @@ class _HomePageState extends State<HomePage> {
                 isFollowingUser ? Icons.my_location : Icons.location_disabled,
     ),
   ),
-),
+ ),
           // This is the new button here:
               Positioned(
                 bottom: 20,
                 right: 20,
                 child: SavedLocationButton(onPressed: _showPinnedLocations),               
-    ),
+    ), // FriendScreen button
+      Positioned(
+        bottom: 20,
+        left: 20,
+        child: ElevatedButton(
+          onPressed: () {
+            Navigator.push(
+              context,
+              MaterialPageRoute(builder: (context) => const FriendScreen()),
+              );
+          },
+          child: const Text("Friends"),
+         ),
+        ),
+      /*Positioned(
+        bottom: 60,
+        left: 20,
+        child: ElevatedButton(
+          child: const Text("View Friend Locations"),
+          onPressed: _showSharedLocations,
+        ),
+      )*/
         ],
       ),
     );
@@ -180,7 +202,7 @@ class _HomePageState extends State<HomePage> {
     })
   );
   
-}
+ }
 
   }
 
@@ -272,9 +294,9 @@ class _HomePageState extends State<HomePage> {
       );
     },
   );
-}
-//long press logic
-Future<void> _handleLongPressPin(double lat, double lng) async {
+ }
+ //long press logic
+ Future<void> _handleLongPressPin(double lat, double lng) async {
   final user = FirebaseAuth.instance.currentUser;
   if (user == null) return;
 
@@ -291,11 +313,65 @@ Future<void> _handleLongPressPin(double lat, double lng) async {
   ScaffoldMessenger.of(context).showSnackBar(
     SnackBar(content: Text('Pinned location saved!')),
   );
-}
+ }
+
+ /*void _showSharedLocations() async{
+    final currentUid = FirebaseAuth.instance.currentUser!.uid;
+
+    final friendships = await FirebaseFirestore.instance
+     .collection('friendships').where('status', isEqualTo: 'accepted')
+     .where('userB', isEqualTo: currentUid).get();
+
+    final friendIds = friendships.docs.map((doc) => doc['userA'] as String).toList();
+
+    final sharingFriends = <Map<String, dynamic>>[];
+
+    for(String friendUid in friendIds) {
+      final doc = await FirebaseFirestore.instance
+       .collection('users').doc(friendUid).collection('shared_locations')
+       .doc(currentUid).get();
+      
+    if(doc.exists && doc['isSharing'] == true){
+      final userDoc = await FirebaseFirestore.instance
+       .collection('users').doc(friendUid).get();
+      final name = userDoc['displayName'] ?? 'No Name';
+
+      final lat = userDoc['lastLat'];
+      final lng = userDoc['lastLng'];
+
+      if(lat != null && lng != null){
+        sharingFriends.add({
+          'uid': friendUid,
+          'name': name,
+          'lat': lat,
+          'lng': lng,
+        });
+      }
+    }
+  }
+  showModalBottomSheet(
+    context: context,
+    builder: (context) {
+      return ListView.builder(
+        itemCount: sharingFriends.length,
+        itemBuilder: (context, index) {
+          final friend = sharingFriends[index];
+          return ListTile(
+            title: Text(friend['name']),
+            onTap: () {
+              Navigator.pop(context);
+              
+            }
+          )
+        },
+      )
+    }
+  )
+ }*/
 
 }
-//Changed button style to match purpose
-class SavedLocationButton extends StatelessWidget {
+ //Changed button style to match purpose
+ class SavedLocationButton extends StatelessWidget {
   final VoidCallback onPressed;
 
   const SavedLocationButton({super.key, required this.onPressed});
