@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'package:capstone/consts.dart';
 import 'package:flutter/material.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:location/location.dart';
@@ -6,24 +7,32 @@ import 'package:flutter_polyline_points/flutter_polyline_points.dart';
 
 class MapPage extends StatefulWidget {
   const MapPage({super.key});
-
   @override
   State<MapPage> createState() => _MapPageState();
 }
 
-class _MapPageState extends State<MapPage> {
 
+class _MapPageState extends State<MapPage> {
   Location _locationController = new Location();
   final Completer<GoogleMapController> _mapController = Completer<GoogleMapController>();
+  LatLng? _currentP = null; //user's location
+  Map<PolylineId, Polyline> polylines = {};
 
-  static const LatLng _ruston = LatLng(32.5232, -92.6379);
-  static const LatLng _monroe = LatLng(32.5094, -92.1183);
-  LatLng? _currentP = null;
+
+  static const LatLng _origin = LatLng(32.5232, -92.6379); // ruston
+  static const LatLng _destination = LatLng(32.5094, -92.1183); // monroe
+
 
   @override
   void initState() {
     super.initState();
-    getLocationUpdates();
+    getLocationUpdates().then(
+      (_) => {
+        getPolylinePoints().then((coordinates) => {
+          generatePolyLineFromPoints(coordinates)
+        }),
+      },
+    );
   }
 
   @override
@@ -48,6 +57,7 @@ class _MapPageState extends State<MapPage> {
             position: _currentP!
           ),
         },
+        polylines: Set<Polyline>.of(polylines.values),
       )
     );
   }
@@ -89,6 +99,40 @@ class _MapPageState extends State<MapPage> {
           _cameraToPosition(_currentP!);
         });
       }
+    });
+  }
+
+  // makes the rout between two points
+  Future<List<LatLng>> getPolylinePoints() async {
+    List<LatLng> polylineCoordinates = [];
+    PolylinePoints polylinePoints = PolylinePoints();
+    PolylineResult result = await polylinePoints.getRouteBetweenCoordinates(
+      request: PolylineRequest(
+        origin: PointLatLng(_origin.latitude, _origin.longitude),
+        destination: PointLatLng(_destination.latitude, _destination.longitude),
+        mode: TravelMode.driving
+      ),
+      googleApiKey: GOOGLE_MAPS_API_KEY
+    );
+    if (result.points.isNotEmpty) {
+      result.points.forEach((PointLatLng point) {
+        polylineCoordinates.add(LatLng(point.latitude, point.longitude));
+      });
+    } else {
+      print(result.errorMessage);
+    }
+    return polylineCoordinates;
+  } 
+
+  void generatePolyLineFromPoints(List<LatLng> polylineCoordinates) async {
+    PolylineId id = PolylineId("poly");
+    Polyline polyline = Polyline(
+      polylineId: id, 
+      color: Colors.blue, 
+      points: polylineCoordinates, 
+      width: 6);
+    setState(() {
+      polylines[id] = polyline;
     });
   }
 }
