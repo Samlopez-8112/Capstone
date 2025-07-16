@@ -361,8 +361,13 @@ class _HomePageState extends State<HomePage> {
             title: Text(friend['name']),
             onTap: () {
               Navigator.pop(context);
-              
-            }
+              _googleMapController.animateCamera(
+              CameraUpdate.newLatLngZoom(
+              LatLng(friend['lat'], friend['lng']),
+              16,
+              ),
+              ); 
+            },
           )
         },
       )
