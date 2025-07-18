@@ -6,6 +6,8 @@ import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import '../services/firestore_service.dart';
 import 'home_page.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+
 
 class AuthScreen extends StatefulWidget{
   const AuthScreen({super.key});
@@ -19,30 +21,46 @@ class _AuthScreenState extends State<AuthScreen>{
   String email = '', password = '', displayName = '';
   String error = '';
 
-  void submit() async {
-    if(!_formKey.currentState!.validate()) return;
-    _formKey.currentState!.save();
-    try{
-      UserCredential userCred;
-      if(isLogin){
-        userCred = await FirebaseAuth.instance.signInWithEmailAndPassword(
-          email: email, password: password,
-        );
-      }else{
-        userCred = await FirebaseAuth.instance.createUserWithEmailAndPassword(
-        email: email, 
+void submit() async {
+  if (!_formKey.currentState!.validate()) return;
+  _formKey.currentState!.save();
+
+  try {
+    UserCredential userCred;
+    if (isLogin) {
+      print("🔐 Logging in user...");
+      userCred = await FirebaseAuth.instance.signInWithEmailAndPassword(
+        email: email,
         password: password,
-        );
-        await writeUserProfile(displayName: displayName, 
-        email: email, 
-        photoURL: null,
-        );
-      }
-      Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const HomePage()));
-    } catch (e){
-      setState(() => error = e.toString());
+      );
+    } else {
+      print("🆕 Creating new user...");
+      userCred = await FirebaseAuth.instance.createUserWithEmailAndPassword(
+        email: email,
+        password: password,
+      );
     }
+
+    final uid = userCred.user?.uid;
+    print("Auth successful for UID: $uid");
+
+    // Always write or update the profile after auth
+    await writeUserProfile(
+      displayName: isLogin
+          ? (userCred.user?.displayName ?? 'Unnamed')
+          : displayName,
+      email: email,
+      photoURL: userCred.user?.photoURL,
+    );
+
+    Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const HomePage()));
+  } catch (e, stack) {
+    print("Auth error: $e");
+    print(stack);
+    setState(() => error = e.toString());
   }
+}
+
 
   @override
   Widget build(BuildContext context) {

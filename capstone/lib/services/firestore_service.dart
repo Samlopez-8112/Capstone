@@ -4,21 +4,31 @@ import 'package:firebase_auth/firebase_auth.dart';
 final FirebaseFirestore firestore = FirebaseFirestore.instance;
 final FirebaseAuth auth = FirebaseAuth.instance;
 
-/// Write or update a user profile in Firestore
 Future<void> writeUserProfile({
   required String displayName,
   required String email,
   String? photoURL,
 }) async {
-  final uid = auth.currentUser!.uid;
-  await firestore.collection('users').doc(uid).set({
-    'displayName': displayName,
-    'email': email,
-    'photoURL': photoURL,
-    'createdAt': FieldValue.serverTimestamp(),
-    'lastActive': FieldValue.serverTimestamp(),
-  }, SetOptions(merge: true));
+  final uid = FirebaseAuth.instance.currentUser?.uid;
+  if (uid == null) {
+    print("Cannot write profile: No current user.");
+    return;
+  }
+
+  try {
+    await FirebaseFirestore.instance.collection('users').doc(uid).set({
+      'displayName': displayName,
+      'email': email,
+      'photoURL': photoURL,
+      'createdAt': FieldValue.serverTimestamp(),
+      'lastActive': FieldValue.serverTimestamp(),
+    }, SetOptions(merge: true));
+    print("Profile written to Firestore for UID: $uid");
+  } catch (e) {
+    print("Failed to write profile: $e");
+  }
 }
+
 
 /// Add a recent location under the user's document
 Future<void> addRecentLocation({
