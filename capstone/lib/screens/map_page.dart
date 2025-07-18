@@ -4,6 +4,8 @@ import 'package:flutter/material.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:location/location.dart';
 import 'package:flutter_polyline_points/flutter_polyline_points.dart';
+import '../widgets/autocomplete_search_bar.dart';
+import '../services/places_service.dart';
 
 class MapPage extends StatefulWidget {
   const MapPage({super.key});
@@ -35,32 +37,54 @@ class _MapPageState extends State<MapPage> {
     );
   }
 
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      body: _currentP == null
-      ? const Center(
-        child: Text("Loading..."),
-      )
-      : GoogleMap(
-        onMapCreated: ((GoogleMapController controller) =>
-          _mapController.complete(controller)
-        ),
-        initialCameraPosition: CameraPosition(
-          target: _currentP!,
-          zoom: 13,
-        ),
-        markers: {
-          Marker(
-            markerId: MarkerId("_currentLocation"),
-            icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueAzure),
-            position: _currentP!
+@override
+Widget build(BuildContext context) {
+  return Scaffold(
+    body: _currentP == null
+        ? const Center(
+            child: Text("Loading..."),
+          )
+        : Stack(
+            children: [
+              GoogleMap(
+                onMapCreated: (GoogleMapController controller) {
+                  _mapController.complete(controller);
+                },
+                initialCameraPosition: CameraPosition(
+                  target: _currentP!,
+                  zoom: 13,
+                ),
+                markers: {
+                  Marker(
+                    markerId: const MarkerId("_currentLocation"),
+                    icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueAzure),
+                    position: _currentP!,
+                  ),
+                },
+                polylines: Set<Polyline>.of(polylines.values),
+              ),
+
+              // Search bar at the top ; instantiation of autocomplete_search_bar.dart
+              Positioned(
+                top: 50,
+                left: 15,
+                right: 15,
+                child: AutocompleteSearchBar(
+                  onSuggestionSelected: (LatLng coordinates) async {
+                    final controller = await _mapController.future;
+                    controller.animateCamera(
+                      CameraUpdate.newCameraPosition(
+                        CameraPosition(target: coordinates, zoom: 13.0),
+                      ),
+                    );
+                  },
+                ),
+              ),
+            ],
           ),
-        },
-        polylines: Set<Polyline>.of(polylines.values),
-      )
-    );
-  }
+  );
+}
+
 
   Future<void> _cameraToPosition(LatLng pos) async {
     final GoogleMapController controller = await _mapController.future;
