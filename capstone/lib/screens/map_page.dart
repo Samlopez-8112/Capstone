@@ -4,6 +4,11 @@ import 'package:flutter/material.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:location/location.dart';
 import 'package:flutter_polyline_points/flutter_polyline_points.dart';
+import '../widgets/autocomplete_search_bar.dart';
+import '../services/places_service.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import '../screens/friend_screen.dart';
 
 class MapPage extends StatefulWidget {
   const MapPage({super.key});
@@ -17,11 +22,11 @@ class _MapPageState extends State<MapPage> {
   final Completer<GoogleMapController> _mapController = Completer<GoogleMapController>();
   LatLng? _currentP = null; //user's location
   Map<PolylineId, Polyline> polylines = {};
-
+  bool isFollowingUser = true;
+  Map<MarkerId, Marker> markers = {};
 
   static const LatLng _origin = LatLng(32.5232, -92.6379); // ruston
   static const LatLng _destination = LatLng(32.5094, -92.1183); // monroe
-
 
   @override
   void initState() {
@@ -35,32 +40,106 @@ class _MapPageState extends State<MapPage> {
     );
   }
 
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      body: _currentP == null
-      ? const Center(
-        child: Text("Loading..."),
-      )
-      : GoogleMap(
-        onMapCreated: ((GoogleMapController controller) =>
-          _mapController.complete(controller)
-        ),
-        initialCameraPosition: CameraPosition(
-          target: _currentP!,
-          zoom: 13,
-        ),
-        markers: {
-          Marker(
-            markerId: MarkerId("_currentLocation"),
-            icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueAzure),
-            position: _currentP!
+@override
+Widget build(BuildContext context) {
+  return Scaffold(
+    body: _currentP == null
+        ? const Center(
+            child: Text("Loading..."),
+          )
+        : Stack(
+            children: [
+              GoogleMap(
+                onMapCreated: (GoogleMapController controller) {
+                  _mapController.complete(controller);
+                },
+                initialCameraPosition: CameraPosition(
+                  target: _currentP!,
+                  zoom: 13,
+                ),
+                markers: Set<Marker>.of(markers.values),
+                polylines: Set<Polyline>.of(polylines.values),
+                onLongPress: _handleLongPressPin,
+              ),
+
+              // Search bar at the top ; instantiation of autocomplete_search_bar.dart
+              Positioned(
+                top: 50,
+                left: 15,
+                right: 15,
+                child: AutocompleteSearchBar(
+                  onSuggestionSelected: (LatLng coordinates) async {
+                    final controller = await _mapController.future;
+                    controller.animateCamera(
+                      CameraUpdate.newCameraPosition(
+                        CameraPosition(target: coordinates, zoom: 13.0),
+                      ),
+                    );
+                  },
+                ),
+              ),
+               Positioned(
+            top: 110,
+            right: 15,
+            child: ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.white,
+                foregroundColor: Colors.black,
+                elevation: 4,
+                padding: const EdgeInsets.all(10),
+              ),
+              onPressed: () async {
+                await FirebaseAuth.instance.signOut();
+              },
+              child: const Icon(Icons.logout),
+            ),
           ),
-        },
-        polylines: Set<Polyline>.of(polylines.values),
-      )
-    );
-  }
+           Positioned(
+            bottom: 90,
+            right: 20,
+            child: FloatingActionButton(
+              elevation: 4,
+              onPressed: () {
+                setState(() => isFollowingUser = !isFollowingUser);
+                if (isFollowingUser && _currentP != null) _cameraToPosition(_currentP!);
+              },
+              child: Icon(isFollowingUser ? Icons.my_location : Icons.location_disabled),
+            ),
+          ),
+          Positioned(
+            bottom: 20,
+            right: 20,
+            child: FloatingActionButton(
+              onPressed: _showPinnedLocations,
+              child: const Icon(Icons.bookmark),
+            ),
+          ),
+          Positioned(
+            bottom: 20,
+            left: 20,
+            child: ElevatedButton(
+              onPressed: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (context) => const FriendScreen()),
+                );
+              },
+              child: const Text("Friends"),
+            ),
+          ),
+          Positioned(
+            bottom: 160,
+            left: 20,
+            child: FloatingActionButton(
+            onPressed: _showSharingFriends,
+            child: const Icon(Icons.people),
+               ),
+             ),
+            ],
+          ),
+  );
+}
+
 
   Future<void> _cameraToPosition(LatLng pos) async {
     final GoogleMapController controller = await _mapController.future;
@@ -98,6 +177,9 @@ class _MapPageState extends State<MapPage> {
           _currentP = LatLng(currentLocation.latitude!, currentLocation.longitude!);
           _cameraToPosition(_currentP!);
         });
+        if (isFollowingUser && _currentP != null) {
+          _cameraToPosition(_currentP!); // move outside setState
+        }
       }
     });
   }
@@ -135,4 +217,137 @@ class _MapPageState extends State<MapPage> {
       polylines[id] = polyline;
     });
   }
+
+   Future<void> _handleLongPressPin(LatLng pos) async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
+
+    await FirebaseFirestore.instance
+        .collection('users')
+        .doc(user.uid)
+        .collection('pinned_locations')
+        .add({
+      'lat': pos.latitude,
+      'lng': pos.longitude,
+      'timestamp': FieldValue.serverTimestamp(),
+    });
+
+    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Pinned location saved!')));
+  }
+
+  void _showPinnedLocations() async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
+
+    final snapshot = await FirebaseFirestore.instance
+        .collection('users')
+        .doc(user.uid)
+        .collection('pinned_locations')
+        .orderBy('timestamp', descending: true)
+        .limit(5)
+        .get();
+
+    showModalBottomSheet(
+      context: context,
+      builder: (context) {
+        return ListView(
+          children: snapshot.docs.map((doc) {
+            final lat = doc['lat'];
+            final lng = doc['lng'];
+            final time = doc['timestamp']?.toDate().toString() ?? 'Unknown time';
+            return ListTile(
+              leading: const Icon(Icons.location_pin),
+              title: Text('Lat: $lat, Lng: $lng'),
+              subtitle: Text('Pinned at $time'),
+              onTap: () {
+                Navigator.pop(context);
+                _cameraToPosition(LatLng(lat, lng));
+              },
+            );
+          }).toList(),
+        );
+      },
+    );
+  }
+
+  void _showSharingFriends() async {
+  final user = FirebaseAuth.instance.currentUser;
+  if (user == null) return;
+
+  final snapshot = await FirebaseFirestore.instance
+      .collection('users')
+      .doc(user.uid)
+      .collection('shared_locations')
+      .where('isSharing', isEqualTo: true)
+      .get();
+
+  showModalBottomSheet(
+    context: context,
+    builder: (context) {
+      return ListView(
+        children: snapshot.docs.map((doc) {
+          final friendUid = doc.id;
+
+          return FutureBuilder<DocumentSnapshot>(
+            future: FirebaseFirestore.instance.collection('users').doc(friendUid).get(),
+            builder: (context, userSnap) {
+              if (!userSnap.hasData || !userSnap.data!.exists) {
+                return const ListTile(title: Text("Loading..."));
+              }
+
+              final displayName = userSnap.data!.get('displayName') ?? friendUid;
+
+              return ListTile(
+                leading: const Icon(Icons.person_pin_circle),
+                title: Text(displayName),
+                onTap: () async {
+                  Navigator.pop(context);
+
+                  final locSnap = await FirebaseFirestore.instance
+                      .collection('users')
+                      .doc(friendUid)
+                      .collection('location')
+                      .doc('current')
+                      .get();
+
+                  if (!locSnap.exists) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(content: Text("$displayName has no location data.")),
+                    );
+                    return;
+                  }
+
+                  final lat = locSnap['lat'];
+                  final lng = locSnap['lng'];
+                  final friendPos = LatLng(lat, lng);
+
+                  _cameraToPosition(friendPos);
+
+                  // Add a temporary marker
+                  final markerId = MarkerId("friend_$friendUid");
+                  setState(() {
+                    markers[markerId] = Marker(
+                      markerId: markerId,
+                      position: friendPos,
+                      infoWindow: InfoWindow(title: displayName),
+                      icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueMagenta),
+                    );
+                  });
+
+                  // Remove after 5 seconds
+                  Future.delayed(Duration(seconds: 5), () {
+                    setState(() {
+                      markers.remove(markerId);
+                    });
+                  });
+                },
+              );
+            },
+          );
+        }).toList(),
+      );
+    },
+  );
+}
+
 }

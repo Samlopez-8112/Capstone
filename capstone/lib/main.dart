@@ -47,7 +47,7 @@ class MyApp extends StatelessWidget {
               body: Center(child: CircularProgressIndicator()),
             );
           }else if (snapshot.hasData){
-            return const HomePage();
+            return const MapPage();
           }else{
             return const AuthScreen();
           }

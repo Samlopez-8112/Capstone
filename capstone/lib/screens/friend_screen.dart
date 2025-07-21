@@ -3,6 +3,8 @@ import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:location/location.dart';
+
 
 class FriendScreen extends StatefulWidget {
   const FriendScreen({super.key});
@@ -236,8 +238,26 @@ Widget build(BuildContext context) {
                                     'isSharing': true,
                                     'timestamp': FieldValue.serverTimestamp(),
                                   });
+                                   // Start uploading current location to your own profile
+                                  final loc = await Location().getLocation();
+                                  await FirebaseFirestore.instance
+                                    .collection('users')
+                                    .doc(currentUid)
+                                    .collection('location')
+                                    .doc('current')
+                                    .set({
+                                      'lat': loc.latitude,
+                                      'lng': loc.longitude,
+                                      'timestamp': FieldValue.serverTimestamp(),
+                                    });
                                 } else {
                                   await ref.delete();
+                                  await FirebaseFirestore.instance
+                                    .collection('users')
+                                    .doc(currentUid)
+                                    .collection('location')
+                                    .doc('current')
+                                    .delete();
                                 }
                                 setState(() {});
                               },
