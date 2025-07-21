@@ -227,9 +227,10 @@ Widget build(BuildContext context) {
         .doc(user.uid)
         .collection('pinned_locations')
         .add({
-      'lat': pos.latitude,
-      'lng': pos.longitude,
-      'timestamp': FieldValue.serverTimestamp(),
+         'lat': pos.latitude,
+         'lng': pos.longitude,
+         'timestamp': FieldValue.serverTimestamp(),
+         'isFavorite': false,
     });
 
     ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Pinned location saved!')));
@@ -244,29 +245,58 @@ Widget build(BuildContext context) {
         .doc(user.uid)
         .collection('pinned_locations')
         .orderBy('timestamp', descending: true)
-        .limit(5)
         .get();
+
+    final favorites = snapshot.docs.where((doc) {
+      final data = doc.data() as Map<String, dynamic>;
+      return data['isFavorite'] == true;
+    }).toList();
+
+    final nonFavorites = snapshot.docs.where((doc) {
+      final data = doc.data() as Map<String, dynamic>;
+      return data['isFavorite'] != true;
+    }).take(3).toList();
 
     showModalBottomSheet(
       context: context,
       builder: (context) {
         return ListView(
-          children: snapshot.docs.map((doc) {
-            final lat = doc['lat'];
-            final lng = doc['lng'];
-            final time = doc['timestamp']?.toDate().toString() ?? 'Unknown time';
-            return ListTile(
-              leading: const Icon(Icons.location_pin),
-              title: Text('Lat: $lat, Lng: $lng'),
-              subtitle: Text('Pinned at $time'),
-              onTap: () {
-                Navigator.pop(context);
-                _cameraToPosition(LatLng(lat, lng));
-              },
-            );
-          }).toList(),
+          children: [
+            const ListTile(title: Text("Favorite Locations")),
+            ...favorites.map((doc) => _buildPinTile(doc, user.uid)),
+            const Divider(),
+            const ListTile(title: Text("Recent Locations")),
+            ...nonFavorites.map((doc) => _buildPinTile(doc, user.uid)),
+          ],
         );
       },
+    );
+  }
+
+  Widget _buildPinTile(QueryDocumentSnapshot doc, String uid){
+    final data = doc.data() as Map<String, dynamic>;
+    final lat = doc['lat'];
+    final lng = doc['lng'];
+    final isFav = data['isFavorite'] == true;
+
+    return ListTile(
+      leading: Icon(isFav ? Icons.star : Icons.star_border),
+      title: Text('Lat: $lat, Lng: $lng'),
+      trailing: IconButton(
+        icon: Icon(isFav ? Icons.star : Icons.star_border),
+        onPressed: () {
+          FirebaseFirestore.instance
+            .collection('users').doc(uid)
+            .collection('pinned_locations')
+            .doc(doc.id).update({'isFavorite' :!isFav});
+          Navigator.pop(context);
+          _showPinnedLocations();
+        },
+      ),
+      onTap: (){
+        Navigator.pop(context);
+        _cameraToPosition(LatLng(lat, lng));
+      }
     );
   }
 
