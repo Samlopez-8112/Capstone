@@ -21,7 +21,7 @@ void main() async{
 
 Future<void> setup() async{
   await dotenv.load( // grab .env from discord, name ".env", and insert it in the project directory (alongside pubspec.yaml)
-    fileName: ".env",
+    fileName: "env",    // just env for mac as it dont allow having filename .env
   );
   MapboxOptions.setAccessToken(
     dotenv.env["MAPBOX_ACCESS_TOKEN"]!, // .env contains api tokens
@@ -47,7 +47,7 @@ class MyApp extends StatelessWidget {
               body: Center(child: CircularProgressIndicator()),
             );
           }else if (snapshot.hasData){
-            return const HomePage();
+            return const MapPage();
           }else{
             return const AuthScreen();
           }
