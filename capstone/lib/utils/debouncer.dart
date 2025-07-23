@@ -1,7 +1,8 @@
 import 'dart:async';
 
-// debouncer assisted by https://levelup.gitconnected.com/flutter-google-maps-autocomplete-searchbar-with-debouncing-f5a215ee7381
+// assisted by https://levelup.gitconnected.com/flutter-google-maps-autocomplete-searchbar-with-debouncing-f5a215ee7381
 
+// Debouncer reduces the calls to Google Places API while still allowing for autocompleted searches
 typedef Debounceable<S, T> = Future<S?> Function(T parameter);
 // Adjust the delay here
 const Duration debounceDuration = Duration(milliseconds: 350); // wait 350 seconds to make a call
