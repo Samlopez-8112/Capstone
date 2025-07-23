@@ -7,11 +7,13 @@ import 'package:flutter_dotenv/flutter_dotenv.dart';
 // Places access assisted by: https://levelup.gitconnected.com/flutter-google-maps-autocomplete-searchbar-with-debouncing-f5a215ee7381
 // Modify Suggestion object according to the info you want
 
+// Suggestions class, holds data for placeID and description
 @immutable
 class Suggestion {
   final String placeId;
   final String description;  const Suggestion(this.placeId, this.description);
-}class PlaceApiProvider {
+}
+  class PlaceApiProvider {
   final Client client = Client();
   // IMPORTANT: sessionToken lets you reduce costs by not request-ing the API for autocomplete
   // on every character that you type.

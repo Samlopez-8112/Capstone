@@ -24,6 +24,7 @@ class _MapPageState extends State<MapPage> {
   Map<PolylineId, Polyline> polylines = {};
   bool isFollowingUser = true;
   Map<MarkerId, Marker> markers = {};
+  MarkerId? _searchMarkerId; // id for temporary search markers
 
   static const LatLng _origin = LatLng(32.5232, -92.6379); // ruston
   static const LatLng _destination = LatLng(32.5094, -92.1183); // monroe
@@ -57,28 +58,51 @@ Widget build(BuildContext context) {
                   target: _currentP!,
                   zoom: 13,
                 ),
+                myLocationEnabled: true,
                 markers: Set<Marker>.of(markers.values),
                 polylines: Set<Polyline>.of(polylines.values),
                 onLongPress: _handleLongPressPin,
               ),
 
-              // Search bar at the top ; instantiation of autocomplete_search_bar.dart
-              Positioned(
-                top: 50,
-                left: 15,
-                right: 15,
-                child: AutocompleteSearchBar(
-                  onSuggestionSelected: (LatLng coordinates) async {
-                    final controller = await _mapController.future;
-                    controller.animateCamera(
-                      CameraUpdate.newCameraPosition(
-                        CameraPosition(target: coordinates, zoom: 13.0),
-                      ),
-                    );
-                  },
-                ),
-              ),
-               Positioned(
+          // Search bar at the top ; instantiation of autocomplete_search_bar.dart
+          Positioned(
+            top: 50,
+            left: 15,
+            right: 15,
+            child: AutocompleteSearchBar(
+              onSuggestionSelected: (LatLng coordinates) async { // following code is run on the click of a location
+                final controller = await _mapController.future;
+
+                setState(() {
+                  isFollowingUser = false; // stop camera from following user on search
+
+                  // remove previous search marker if it exists
+                  if (_searchMarkerId != null) {
+                    markers.remove(_searchMarkerId);
+                  }
+
+                  final MarkerId markerId = MarkerId("search_temp");  //create an id for new search marker
+                  _searchMarkerId = markerId;
+
+                  markers[markerId] = Marker( // on each search, place a marker at the searched location
+                    markerId: markerId,
+                    position: coordinates,
+                    infoWindow: const InfoWindow(title: "Searched Location"), 
+                     icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueCyan),
+                  );
+                    });
+
+                // move camera to searched location
+                controller.animateCamera(
+                  CameraUpdate.newCameraPosition(
+                    CameraPosition(target: coordinates, zoom: 13.0),
+                  )
+                 );
+              },
+             ),
+           ),
+
+            Positioned(
             top: 110,
             right: 15,
             child: ElevatedButton(
@@ -100,9 +124,20 @@ Widget build(BuildContext context) {
             child: FloatingActionButton(
               elevation: 4,
               onPressed: () {
-                setState(() => isFollowingUser = !isFollowingUser);
-                if (isFollowingUser && _currentP != null) _cameraToPosition(_currentP!);
+                setState(() {
+                  isFollowingUser = !isFollowingUser;
+
+                  if (isFollowingUser && _searchMarkerId != null) {
+                    markers.remove(_searchMarkerId);
+                    _searchMarkerId = null;
+                  }
+                });
+
+                if (isFollowingUser && _currentP != null) {
+                  _cameraToPosition(_currentP!);
+                }
               },
+
               child: Icon(isFollowingUser ? Icons.my_location : Icons.location_disabled),
             ),
           ),
@@ -175,7 +210,7 @@ Widget build(BuildContext context) {
       if (currentLocation.latitude != null && currentLocation.longitude != null) {
         setState(() {
           _currentP = LatLng(currentLocation.latitude!, currentLocation.longitude!);
-          _cameraToPosition(_currentP!);
+         // _cameraToPosition(_currentP!);
         });
         if (isFollowingUser && _currentP != null) {
           _cameraToPosition(_currentP!); // move outside setState
