@@ -1,8 +1,9 @@
+//help from chatgpt
 import 'dart:ui';
-
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:location/location.dart';
 
 class FriendScreen extends StatefulWidget {
   const FriendScreen({super.key});
@@ -46,12 +47,10 @@ void searchUserById() async {
   }
 }
 
-
-
-
   Future<void> sendFriendRequest(String targetUid) async {
     final currentUid = _auth.currentUser!.uid;
 
+    try{ //Documentation for the database
     await FirebaseFirestore.instance.collection('friendships').add({
       'userA': currentUid,
       'userB': targetUid,
@@ -62,17 +61,32 @@ void searchUserById() async {
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(content: Text('Friend request sent')),
     );
+  } catch(e){//error handling 
+     print('Error sending friend request: $e');
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('Error: ${e.toString()}')),
+    );
   }
-
+  }
+    //Logic for both users seeing list of friends
   Stream<List<String>> getFriendIdsStream() {
     final currentUid = _auth.currentUser!.uid;
-    return FirebaseFirestore.instance
-        .collection('friendships')
-        .where('status', isEqualTo: 'accepted')
-        .where('userA', isEqualTo: currentUid)
-        .snapshots()
-        .map((snapshot) =>
-            snapshot.docs.map((doc) => doc['userB'] as String).toList());
+    final sentQuery = FirebaseFirestore.instance 
+      .collection('friendships').where('status', isEqualTo: 'accepted')
+      .where('userA', isEqualTo: currentUid).snapshots();
+
+    final receivedQuery = FirebaseFirestore.instance
+      .collection('friendships').where('status', isEqualTo: 'accepted')
+      .where('userB', isEqualTo: currentUid).snapshots();
+
+    return sentQuery.asyncMap((sentSnap) async{
+     final receivedSnap = await receivedQuery.first; 
+
+     final sentIds = sentSnap.docs.map((doc) => doc['userB'] as String);
+     final recievedIds = receivedSnap.docs.map((doc) => doc['userA'] as String);
+
+    return [...sentIds, ...recievedIds];
+  });
   }
 
   Stream<List<DocumentSnapshot>> getIncomingRequestsStream() {
@@ -155,21 +169,39 @@ Widget build(BuildContext context) {
                             subtitle: Text(senderUid),
                           );
                         }
-
                         final senderData = userSnapshot.data!;
                         final senderName = senderData.get('displayName') ?? 'Unknown';
 
-                        return ListTile(
-                          title: Text(senderName),
-                          subtitle: Text(senderUid),
-                          trailing: ElevatedButton(
-                            onPressed: () async {
-                              await FirebaseFirestore.instance
+                       return ListTile(
+                        title: Text(senderName),
+                        subtitle: Text(senderUid),
+                        trailing: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            ElevatedButton(
+                              onPressed: () async {
+                                await FirebaseFirestore.instance
                                   .collection('friendships')
                                   .doc(doc.id)
                                   .update({'status': 'accepted'});
-                            },
-                            child: const Text("Accept"),
+                                },
+                                child: const Text("Accept"),
+                            ),
+                                const SizedBox(width: 8),
+                                ElevatedButton(
+                                style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+                                onPressed: () async {
+                                  await FirebaseFirestore.instance
+                                    .collection('friendships')
+                                    .doc(doc.id)
+                                    .delete();
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(content: Text('Friend request rejected')),
+                                );
+                              },
+                                child: const Text("Reject"),
+                              ),
+                            ],
                           ),
                         );
                       },
@@ -219,43 +251,70 @@ Widget build(BuildContext context) {
                             if (!shareSnapshot.hasData) {
                               return const ListTile(title: Text("Loading sharing status..."));
                             }
-                            final isSharing = shareSnapshot.data!.get('isSharing') ?? false;
 
-                            return SwitchListTile(
-                              title: Text(friendData.get('displayName') ?? 'No Display Name'),
-                              subtitle: Text(friendIds[index]),
-                              value: isSharing,
-                              onChanged: (value) async {
-                                final ref = FirebaseFirestore.instance
-                                    .collection('users')
-                                    .doc(currentUid)
-                                    .collection('shared_locations')
-                                    .doc(friendIds[index]);
-                                if (value) {
-                                  await ref.set({
-                                    'isSharing': true,
-                                    'timestamp': FieldValue.serverTimestamp(),
-                                  });
-                                } else {
-                                  await ref.delete();
+                          final shareDoc = shareSnapshot.data!;
+                          bool isSharing = false;
+
+                            if (shareDoc.exists) {
+                              final data = shareDoc.data();
+                              if (data is Map<String, dynamic> && data.containsKey('isSharing')) {
+                                isSharing = data['isSharing'] == true;
+                              }
+                            }
+
+                          return SwitchListTile(
+                          title: Text(friendData.get('displayName') ?? 'No Display Name'),
+                          subtitle: Text(friendIds[index]),
+                          value: isSharing,
+                          onChanged: (value) async {
+                          final ref = FirebaseFirestore.instance
+                            .collection('users')
+                            .doc(currentUid)
+                            .collection('shared_locations')
+                            .doc(friendIds[index]);
+
+                          if (value) {
+                            await ref.set({
+                              'isSharing': true,
+                              'timestamp': FieldValue.serverTimestamp(),
+                            });
+
+                            final loc = await Location().getLocation();
+                            await FirebaseFirestore.instance
+                              .collection('users')
+                              .doc(currentUid)
+                              .collection('location')
+                              .doc('current')
+                              .set({
+                                'lat': loc.latitude,
+                                'lng': loc.longitude,
+                                'timestamp': FieldValue.serverTimestamp(),
+                              });
+                            } else {
+                                await ref.delete();
+                                await FirebaseFirestore.instance
+                                  .collection('users')
+                                  .doc(currentUid)
+                                  .collection('location')
+                                  .doc('current')
+                                  .delete();
                                 }
-                                setState(() {});
-                              },
-                            );
-                          },
-                        );
-                      },
-                    );
-                  },
-                );
-              },
+
+                                  if (mounted) setState(() {});
+                                },
+                              );
+                            }
+                          );
+                        },
+                      );
+                    },
+                  );
+                },
+              ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
-    ),
-  );
-}
-
-
+    );
+  }
 }

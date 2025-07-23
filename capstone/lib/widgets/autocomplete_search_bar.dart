@@ -5,43 +5,68 @@ import '../services/places_service.dart';
 import 'package:uuid/uuid.dart';
 import '../utils/debouncer.dart';
 
+//Search bar widget displays location suggestions from Google Places API
+//returns coordinates of selected location.
 class AutocompleteSearchBar extends StatefulWidget {
-  // A callback function passed when using the AutocompleteSearchBar
-  // widget, to do something after a suggestion is tapped/selected.
+  // onSuggestionSelected is a callback function used to do something
+  // after a suggestion is tapped
   final Function(LatLng) onSuggestionSelected;  const AutocompleteSearchBar({
     super.key,
     required this.onSuggestionSelected,
   });  @override
   State<AutocompleteSearchBar> createState() => _AutocompleteSearchBarState();
-}class _AutocompleteSearchBarState extends State<AutocompleteSearchBar> {
+}
+
+class _AutocompleteSearchBarState extends State<AutocompleteSearchBar> {
   String? _currentQuery;
+
+  // Stores last generated suggestions
   late Iterable<Widget> _lastOptions = <Widget>[];
+  // use debounced search to reduce api calls
   late final Debounceable<List<Suggestion>?, String> _debouncedSearch;
-  PlaceApiProvider? _placeApi;
-  String? _sessionToken;  @override
+  PlaceApiProvider? _placeApi; // Places API provider
+
+  String? _sessionToken; // each autocompleting session has a unique token  
+  
+  @override
   void initState() {
     super.initState();
-    // Debounce the _search function using our code from debouncer.dart
+    // initialize debouncer to delay '_search' method calls
     _debouncedSearch = debounce<List<Suggestion>?, String>(_search);
-  }  @override
+  }
+  
+    @override
+  // save resources by disposing
   void dispose() {
     _sessionToken = null;
     _placeApi = null;
     super.dispose();
-  }  Future<List<Suggestion>?> _search(String query) async {
+  }
+  
+    // Grabs suggestions from Places API based on input
+    Future<List<Suggestion>?> _search(String query) async {
     _currentQuery = query;    if (_placeApi == null) {
       debugPrint('Place API provider not initialized.');
       return null;
-    }    // In a real application, there should be some error handling here.
+    }
+    
+    // use user's 'locale' for more logical suggestions 
     final List<Suggestion> options = await _placeApi!.fetchSuggestions(
-        _currentQuery!, Localizations.localeOf(context).languageCode);    if (_currentQuery != query) {
+        _currentQuery!, Localizations.localeOf(context).languageCode);    
+        if (_currentQuery != query) { // ensure we're returning the current result
       return null;
     }
-    _currentQuery = null;    return options;
-  }  void _startSearchSession() {
+    _currentQuery = null;    
+    return options;
+  }
+  
+  // Starts the session for Google Places
+    void _startSearchSession() {
     _sessionToken = const Uuid().v4();
     _placeApi = PlaceApiProvider(_sessionToken);
-  }  @override
+  } 
+  
+   @override
   Widget build(BuildContext context) {
     double screenHeight = MediaQuery.of(context).size.height;    return Container(
       padding: const EdgeInsets.all(10.0),
@@ -51,6 +76,7 @@ class AutocompleteSearchBar extends StatefulWidget {
           // Set the height of the suggestions box
           maxHeight: screenHeight * 0.3,
         ),
+        // Search bar UI
         builder: (BuildContext context, SearchController controller) {
           return Row(mainAxisAlignment: MainAxisAlignment.center, children: [
             Expanded(
@@ -71,14 +97,19 @@ class AutocompleteSearchBar extends StatefulWidget {
             ),
           ]);
         },
+         // generate list of suggestions
         suggestionsBuilder:
             (BuildContext context, SearchController controller) async {
           _currentQuery = controller.text;
+          // fetch the suggestions
           final List<Suggestion>? options =
               (await _debouncedSearch(controller.text))?.toList();
           if (options == null) {
             return _lastOptions;
-          }          _lastOptions = List<ListTile>.generate(options.length, (int index) {
+          }
+
+          // Place each suggestion in a clickable 'ListTile' 
+          _lastOptions = List<ListTile>.generate(options.length, (int index) {
             final Suggestion item = options[index];
             return ListTile(
                 title: Text(item.description),
@@ -87,7 +118,7 @@ class AutocompleteSearchBar extends StatefulWidget {
                       await _placeApi!.getPlaceCoordinatesFromId(item.placeId);
                   // Call our function when a suggestion is tapped
                   widget.onSuggestionSelected(latLng);
-                  controller.closeView(null);
+                  controller.closeView(null); //Close suggestions bar when one is tapped
                 });
           });          return _lastOptions;
         },

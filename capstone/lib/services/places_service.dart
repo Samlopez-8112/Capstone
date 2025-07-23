@@ -6,6 +6,7 @@ import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:capstone/models/poi_category.dart';
 
 // Places access assisted by: https://levelup.gitconnected.com/flutter-google-maps-autocomplete-searchbar-with-debouncing-f5a215ee7381
+<<<<<<< HEAD
 @immutable
 class Suggestion {
   final String placeId;
@@ -14,6 +15,17 @@ class Suggestion {
 }
 
 class PlaceApiProvider {
+=======
+// Modify Suggestion object according to the info you want
+
+// Suggestions class, holds data for placeID and description
+@immutable
+class Suggestion {
+  final String placeId;
+  final String description;  const Suggestion(this.placeId, this.description);
+}
+  class PlaceApiProvider {
+>>>>>>> 0a7390ac6e29a62589d17857f76823970565681c
   final Client client = Client();
   final String? sessionToken;
   static final String apiKey = dotenv.get('GOOGLE_MAPS_API_KEY', fallback: 'key_not_found');
