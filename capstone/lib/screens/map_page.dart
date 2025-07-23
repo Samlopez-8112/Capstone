@@ -299,79 +299,87 @@ Widget build(BuildContext context) {
       }
     );
   }
-
-  void _showSharingFriends() async {
+  //help from chatgpt
+ void _showSharingFriends() async {
   final user = FirebaseAuth.instance.currentUser;
   if (user == null) return;
 
-  final snapshot = await FirebaseFirestore.instance
-      .collection('users')
-      .doc(user.uid)
-      .collection('shared_locations')
-      .where('isSharing', isEqualTo: true)
-      .get();
+  // 🔍 Find all users who are sharing with "you"
+  final allUsersSnapshot = await FirebaseFirestore.instance.collection('users').get();
 
+  final sharedWithMe = <DocumentSnapshot>[];
+
+  for (final userDoc in allUsersSnapshot.docs) {
+    if (userDoc.id == user.uid) continue;
+
+    final sharedDoc = await FirebaseFirestore.instance
+        .collection('users')
+        .doc(userDoc.id)
+        .collection('shared_locations')
+        .doc(user.uid)
+        .get();
+
+    if (sharedDoc.exists && sharedDoc.data()?['isSharing'] == true) {
+      sharedWithMe.add(userDoc);
+    }
+  }
+
+  if (sharedWithMe.isEmpty) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text("No friends are sharing with you.")),
+    );
+    return;
+  }
+  // help from chatgpt
   showModalBottomSheet(
     context: context,
     builder: (context) {
       return ListView(
-        children: snapshot.docs.map((doc) {
-          final friendUid = doc.id;
+        children: sharedWithMe.map((userSnap) {
+          final displayName = userSnap.get('displayName') ?? userSnap.id;
+          final friendUid = userSnap.id;
 
-          return FutureBuilder<DocumentSnapshot>(
-            future: FirebaseFirestore.instance.collection('users').doc(friendUid).get(),
-            builder: (context, userSnap) {
-              if (!userSnap.hasData || !userSnap.data!.exists) {
-                return const ListTile(title: Text("Loading..."));
+          return ListTile(
+            leading: const Icon(Icons.person_pin_circle),
+            title: Text(displayName),
+            onTap: () async {
+              Navigator.pop(context);
+
+              final locSnap = await FirebaseFirestore.instance
+                  .collection('users')
+                  .doc(friendUid)
+                  .collection('location')
+                  .doc('current')
+                  .get();
+
+              if (!locSnap.exists) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(content: Text("$displayName has no location data.")),
+                );
+                return;
               }
 
-              final displayName = userSnap.data!.get('displayName') ?? friendUid;
+              final lat = locSnap['lat'];
+              final lng = locSnap['lng'];
+              final friendPos = LatLng(lat, lng);
 
-              return ListTile(
-                leading: const Icon(Icons.person_pin_circle),
-                title: Text(displayName),
-                onTap: () async {
-                  Navigator.pop(context);
+              _cameraToPosition(friendPos);
 
-                  final locSnap = await FirebaseFirestore.instance
-                      .collection('users')
-                      .doc(friendUid)
-                      .collection('location')
-                      .doc('current')
-                      .get();
+              final markerId = MarkerId("friend_$friendUid");
+              setState(() {
+                markers[markerId] = Marker(
+                  markerId: markerId,
+                  position: friendPos,
+                  infoWindow: InfoWindow(title: displayName),
+                  icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueMagenta),
+                );
+              });
 
-                  if (!locSnap.exists) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(content: Text("$displayName has no location data.")),
-                    );
-                    return;
-                  }
-
-                  final lat = locSnap['lat'];
-                  final lng = locSnap['lng'];
-                  final friendPos = LatLng(lat, lng);
-
-                  _cameraToPosition(friendPos);
-
-                  // Add a temporary marker
-                  final markerId = MarkerId("friend_$friendUid");
-                  setState(() {
-                    markers[markerId] = Marker(
-                      markerId: markerId,
-                      position: friendPos,
-                      infoWindow: InfoWindow(title: displayName),
-                      icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueMagenta),
-                    );
-                  });
-
-                  // Remove after 5 seconds
-                  Future.delayed(Duration(seconds: 5), () {
-                    setState(() {
-                      markers.remove(markerId);
-                    });
-                  });
-                },
-              );
+                Future.delayed(const Duration(seconds: 5), () {
+                setState(() {
+                  markers.remove(markerId);
+                });
+              });
             },
           );
         }).toList(),
@@ -379,5 +387,6 @@ Widget build(BuildContext context) {
     },
   );
 }
+
 
 }
