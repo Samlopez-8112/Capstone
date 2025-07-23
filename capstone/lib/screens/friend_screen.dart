@@ -169,21 +169,39 @@ Widget build(BuildContext context) {
                             subtitle: Text(senderUid),
                           );
                         }
-
                         final senderData = userSnapshot.data!;
                         final senderName = senderData.get('displayName') ?? 'Unknown';
 
-                        return ListTile(
-                          title: Text(senderName),
-                          subtitle: Text(senderUid),
-                          trailing: ElevatedButton(
-                            onPressed: () async {
-                              await FirebaseFirestore.instance
+                       return ListTile(
+                        title: Text(senderName),
+                        subtitle: Text(senderUid),
+                        trailing: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            ElevatedButton(
+                              onPressed: () async {
+                                await FirebaseFirestore.instance
                                   .collection('friendships')
                                   .doc(doc.id)
                                   .update({'status': 'accepted'});
-                            },
-                            child: const Text("Accept"),
+                                },
+                                child: const Text("Accept"),
+                            ),
+                                const SizedBox(width: 8),
+                                ElevatedButton(
+                                style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+                                onPressed: () async {
+                                  await FirebaseFirestore.instance
+                                    .collection('friendships')
+                                    .doc(doc.id)
+                                    .delete();
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(content: Text('Friend request rejected')),
+                                );
+                              },
+                                child: const Text("Reject"),
+                              ),
+                            ],
                           ),
                         );
                       },
