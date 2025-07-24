@@ -5,33 +5,31 @@ import 'package:http/http.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:capstone/models/poi_category.dart';
 
-// Places access assisted by: https://levelup.gitconnected.com/flutter-google-maps-autocomplete-searchbar-with-debouncing-f5a215ee7381
-<<<<<<< HEAD
+/// Places access assisted by:
+/// https://levelup.gitconnected.com/flutter-google-maps-autocomplete-searchbar-with-debouncing-f5a215ee7381
+
+/// Suggestion class holds basic autocomplete prediction data.
 @immutable
 class Suggestion {
   final String placeId;
   final String description;
+
   const Suggestion(this.placeId, this.description);
 }
 
+/// Handles Autocomplete and Place Details API calls
 class PlaceApiProvider {
-=======
-// Modify Suggestion object according to the info you want
-
-// Suggestions class, holds data for placeID and description
-@immutable
-class Suggestion {
-  final String placeId;
-  final String description;  const Suggestion(this.placeId, this.description);
-}
-  class PlaceApiProvider {
->>>>>>> 0a7390ac6e29a62589d17857f76823970565681c
   final Client client = Client();
+
+  /// sessionToken improves billing efficiency
   final String? sessionToken;
+
+  /// API Key loaded from .env file
   static final String apiKey = dotenv.get('GOOGLE_MAPS_API_KEY', fallback: 'key_not_found');
 
   PlaceApiProvider(this.sessionToken);
 
+  /// Fetch autocomplete suggestions
   Future<List<Suggestion>> fetchSuggestions(String input, String languageCode) async {
     if (input.isEmpty) return <Suggestion>[];
 
@@ -58,6 +56,7 @@ class Suggestion {
     }
   }
 
+  /// Parses autocomplete suggestions from response
   List<Suggestion> _parseSuggestions(String responseBody) {
     final result = jsonDecode(responseBody);
     if (result['suggestions'] == null) return [];
@@ -69,6 +68,7 @@ class Suggestion {
         .toList();
   }
 
+  /// Fetch coordinates for a selected place
   Future<LatLng> getPlaceCoordinatesFromId(String placeId) async {
     final Uri requestUri = Uri.https(
       'places.googleapis.com',
@@ -92,6 +92,7 @@ class Suggestion {
     }
   }
 
+  /// Parses coordinates from place detail response
   LatLng _parseCoordinates(String responseBody) {
     final result = jsonDecode(responseBody);
     if (result.containsKey('location') &&
@@ -105,12 +106,12 @@ class Suggestion {
   }
 }
 
-// ============== Nearby Places Section ==============
+/// ============== Nearby Places Section ==============
 
+/// Fetches nearby points of interest based on category and radius
 class NearbyPlacesService {
   final String apiKey = dotenv.get('GOOGLE_MAPS_API_KEY', fallback: 'key_not_found');
 
-  // UPDATED: Accepts PoiCategory instead of raw type string
   Future<List<Map<String, dynamic>>> fetchNearby({
     required double latitude,
     required double longitude,

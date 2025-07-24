@@ -1,7 +1,3 @@
-// This screen is the 'main' screen of the app. Centers on user's current location
-// UI should be added here
-
-// See this tutorial for a better understanding: https://youtu.be/UafQ8rw1V-Y?si=kFv63X5jXPSJ4Vbl
 import 'dart:async';
 import 'dart:math';
 import 'package:firebase_core/firebase_core.dart';
@@ -13,10 +9,11 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:capstone/widgets/saved_location_button.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../screens/friend_screen.dart';
-import 'package:url_launcher/url_launcher.dart'; 
-import 'package:flutter_speed_dial/flutter_speed_dial.dart'; 
-import 'package:capstone/models/poi_category.dart' show PoiCategory;
+import 'package:flutter_speed_dial/flutter_speed_dial.dart';
+import 'package:url_launcher/url_launcher.dart';
+import 'package:capstone/models/poi_category.dart';
 import 'package:capstone/services/places_service.dart' as places;
+
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
   @override
@@ -30,10 +27,6 @@ class _HomePageState extends State<HomePage> {
   final TextEditingController _searchController = TextEditingController();
   double _searchRadius = 2000;
   List<Map<String, dynamic>> _lastFetchedPOIs = [];
-
-  void _handleSearch(String query) {
-    debugPrint('Searching for: $query');
-  }
 
   @override
   void initState() {
@@ -54,12 +47,13 @@ class _HomePageState extends State<HomePage> {
         children: [
           mb.MapWidget(
             onMapCreated: _onMapCreated,
-            onLongTapListener: (mb.MapContentGestureContext ctx) {
+            onLongTapListener: (ctx) {
               final lat = (ctx.point.coordinates[1] as num).toDouble();
               final lng = (ctx.point.coordinates[0] as num).toDouble();
               _handleLongPressPin(lat, lng);
             },
           ),
+          // Search Bar
           Positioned(
             top: 50,
             left: 15,
@@ -73,7 +67,7 @@ class _HomePageState extends State<HomePage> {
               ),
               child: TextField(
                 controller: _searchController,
-                onSubmitted: _handleSearch,
+                onSubmitted: (query) => debugPrint('Searching for: $query'),
                 decoration: InputDecoration(
                   hintText: 'Search',
                   border: InputBorder.none,
@@ -83,6 +77,7 @@ class _HomePageState extends State<HomePage> {
               ),
             ),
           ),
+          // Sign Out Button
           Positioned(
             top: 110,
             right: 15,
@@ -97,43 +92,6 @@ class _HomePageState extends State<HomePage> {
                 await FirebaseAuth.instance.signOut();
               },
               child: const Icon(Icons.logout),
-            ),
-          ),
-          Positioned(
-            bottom: 90,
-            right: 20,
-            child: FloatingActionButton(
-              elevation: 4,
-              onPressed: () async {
-                setState(() {
-                  isFollowingUser = !isFollowingUser;
-                });
-
-                if (isFollowingUser && mapboxMapController != null) {
-                  try {
-                    final position = await gl.Geolocator.getCurrentPosition(
-                      desiredAccuracy: gl.LocationAccuracy.high,
-                    );
-                    mapboxMapController!.flyTo(
-                      mb.CameraOptions(
-                        center: mb.Point(
-                          coordinates: mb.Position(
-                            position.longitude,
-                            position.latitude,
-                          ),
-                        ),
-                        zoom: 16,
-                      ),
-                      mb.MapAnimationOptions(duration: 500),
-                    );
-                  } catch (e) {
-                    debugPrint('Error getting current position: $e');
-                  }
-                }
-              },
-              child: Icon(
-                isFollowingUser ? Icons.my_location : Icons.location_disabled,
-              ),
             ),
           ),
           // Radius Slider
@@ -158,17 +116,13 @@ class _HomePageState extends State<HomePage> {
                     max: 5000,
                     divisions: 49,
                     label: '${_searchRadius.round()}m',
-                    onChanged: (value) {
-                      setState(() {
-                        _searchRadius = value;
-                      });
-                    },
+                    onChanged: (value) => setState(() => _searchRadius = value),
                   ),
                 ],
               ),
             ),
           ),
-          // Speed Dial
+          // POI Categories
           Positioned(
             bottom: 90,
             left: 20,
@@ -180,35 +134,32 @@ class _HomePageState extends State<HomePage> {
               spaceBetweenChildren: 8,
               overlayColor: Colors.black,
               overlayOpacity: 0.3,
-              children: [
-                SpeedDialChild(
-                  child: const Icon(Icons.local_hospital),
-                  label: 'Hospitals',
-                  onTap: () => _fetchCategoryPOIs(PoiCategory.hospital),
-                ),
-                SpeedDialChild(
-                  child: const Icon(Icons.local_gas_station),
-                  label: 'Gas Stations',
-                  onTap: () => _fetchCategoryPOIs(PoiCategory.gasStation),
-                ),
-                SpeedDialChild(
-                  child: const Icon(Icons.local_police),
-                  label: 'Police Stations',
-                  onTap: () => _fetchCategoryPOIs(PoiCategory.police),
-                ),
-                SpeedDialChild(
-                  child: const Icon(Icons.build),
-                  label: 'Mechanics',
-                  onTap: () => _fetchCategoryPOIs(PoiCategory.carRepair),
-                ),
-              ],
+              children: PoiCategory.values.map((cat) {
+                return SpeedDialChild(
+                  child: Image.asset(cat.iconPath, height: 24),
+                  label: cat.label,
+                  onTap: () => _fetchCategoryPOIs(cat),
+                );
+              }).toList(),
             ),
           ),
+          // Track User Button
+          Positioned(
+            bottom: 90,
+            right: 20,
+            child: FloatingActionButton(
+              elevation: 4,
+              onPressed: () => _toggleFollow(),
+              child: Icon(isFollowingUser ? Icons.my_location : Icons.location_disabled),
+            ),
+          ),
+          // Saved Locations
           Positioned(
             bottom: 20,
             right: 20,
-            child: SavedLocationButton(onPressed: _showPinnedLocations),
+            child: const SavedLocationButton(),
           ),
+          // Friends
           Positioned(
             bottom: 20,
             left: 20,
@@ -228,62 +179,59 @@ class _HomePageState extends State<HomePage> {
   }
 
   void _onMapCreated(mb.MapboxMap controller) async {
-    setState(() {
-      mapboxMapController = controller;
-    });
-
+    setState(() => mapboxMapController = controller);
     var status = await Permission.location.request();
     if (status.isGranted) {
       mapboxMapController?.location.updateSettings(
-        mb.LocationComponentSettings(
-          enabled: true,
-          pulsingEnabled: true,
-        ),
+        mb.LocationComponentSettings(enabled: true, pulsingEnabled: true),
       );
-    } else {
-      debugPrint("Location permissions denied.");
     }
   }
 
   Future<void> _setupPositionTracking() async {
-    bool serviceEnabled;
-    gl.LocationPermission permission;
-
-    serviceEnabled = await gl.Geolocator.isLocationServiceEnabled();
-    if (!serviceEnabled) return Future.error('Location services are disabled.');
-
-    permission = await gl.Geolocator.checkPermission();
+    bool serviceEnabled = await gl.Geolocator.isLocationServiceEnabled();
+    if (!serviceEnabled) return;
+    var permission = await gl.Geolocator.checkPermission();
     if (permission == gl.LocationPermission.denied) {
       permission = await gl.Geolocator.requestPermission();
-      if (permission == gl.LocationPermission.denied) {
-        return Future.error('Location permissions are denied');
-      }
+      if (permission != gl.LocationPermission.whileInUse && permission != gl.LocationPermission.always) return;
     }
-    if (permission == gl.LocationPermission.deniedForever) {
-      return Future.error('User permanently denied permissions');
-    }
-
-    gl.LocationSettings locationSettings = gl.LocationSettings(
-      accuracy: gl.LocationAccuracy.high,
-      distanceFilter: 10,
-    );
 
     userPositionStream?.cancel();
-    userPositionStream = gl.Geolocator.getPositionStream(locationSettings: locationSettings)
-        .listen((gl.Position? position) {
-      if (position != null && mapboxMapController != null && isFollowingUser) {
+    userPositionStream = gl.Geolocator.getPositionStream(
+      locationSettings: gl.LocationSettings(accuracy: gl.LocationAccuracy.high, distanceFilter: 10),
+    ).listen((gl.Position? position) {
+      if (position != null && isFollowingUser && mapboxMapController != null) {
         mapboxMapController?.flyTo(
-          mb.CameraOptions(
-            center: mb.Point(coordinates: mb.Position(
-              position.longitude,
-              position.latitude,
-            )),
-            zoom: 16,
-          ),
+          mb.CameraOptions(center: mb.Point(coordinates: mb.Position(position.longitude, position.latitude)), zoom: 16),
           mb.MapAnimationOptions(duration: 500),
         );
       }
     });
+  }
+
+  void _toggleFollow() async {
+    setState(() => isFollowingUser = !isFollowingUser);
+    if (isFollowingUser && mapboxMapController != null) {
+      final position = await gl.Geolocator.getCurrentPosition();
+      mapboxMapController?.flyTo(
+        mb.CameraOptions(center: mb.Point(coordinates: mb.Position(position.longitude, position.latitude)), zoom: 16),
+        mb.MapAnimationOptions(duration: 500),
+      );
+    }
+  }
+
+  Future<void> _handleLongPressPin(double lat, double lng) async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
+
+    await FirebaseFirestore.instance.collection('users').doc(user.uid).collection('pinned_locations').add({
+      'lat': lat,
+      'lng': lng,
+      'timestamp': FieldValue.serverTimestamp(),
+    });
+
+    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Pinned location saved!')));
   }
 
   void _showPinnedLocations() async {
@@ -313,10 +261,7 @@ class _HomePageState extends State<HomePage> {
               onTap: () {
                 Navigator.pop(context);
                 mapboxMapController?.flyTo(
-                  mb.CameraOptions(
-                    center: mb.Point(coordinates: mb.Position(lng, lat)),
-                    zoom: 15,
-                  ),
+                  mb.CameraOptions(center: mb.Point(coordinates: mb.Position(lng, lat)), zoom: 15),
                   mb.MapAnimationOptions(duration: 500),
                 );
               },
@@ -324,25 +269,6 @@ class _HomePageState extends State<HomePage> {
           }).toList(),
         );
       },
-    );
-  }
-
-  Future<void> _handleLongPressPin(double lat, double lng) async {
-    final user = FirebaseAuth.instance.currentUser;
-    if (user == null) return;
-
-    await FirebaseFirestore.instance
-        .collection('users')
-        .doc(user.uid)
-        .collection('pinned_locations')
-        .add({
-          'lat': lat,
-          'lng': lng,
-          'timestamp': FieldValue.serverTimestamp(),
-        });
-
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('Pinned location saved!')),
     );
   }
 
@@ -356,10 +282,7 @@ class _HomePageState extends State<HomePage> {
         radius: _searchRadius.round(),
       );
 
-      setState(() {
-        _lastFetchedPOIs = results;
-      });
-
+      setState(() => _lastFetchedPOIs = results);
       _showPOIListSheet(userPos.latitude, userPos.longitude);
     } catch (e) {
       debugPrint('Error fetching ${category.label}: $e');
@@ -372,12 +295,8 @@ class _HomePageState extends State<HomePage> {
   void _showPOIListSheet(double userLat, double userLng) {
     final sorted = List<Map<String, dynamic>>.from(_lastFetchedPOIs);
     sorted.sort((a, b) {
-      final aLat = a['geometry']['location']['lat'];
-      final aLng = a['geometry']['location']['lng'];
-      final bLat = b['geometry']['location']['lat'];
-      final bLng = b['geometry']['location']['lng'];
-      final distA = _calculateDistanceMeters(userLat, userLng, aLat, aLng);
-      final distB = _calculateDistanceMeters(userLat, userLng, bLat, bLng);
+      final distA = _calculateDistanceMeters(userLat, userLng, a['geometry']['location']['lat'], a['geometry']['location']['lng']);
+      final distB = _calculateDistanceMeters(userLat, userLng, b['geometry']['location']['lat'], b['geometry']['location']['lng']);
       return distA.compareTo(distB);
     });
 
@@ -405,10 +324,7 @@ class _HomePageState extends State<HomePage> {
               onTap: () {
                 Navigator.pop(context);
                 mapboxMapController?.flyTo(
-                  mb.CameraOptions(
-                    center: mb.Point(coordinates: mb.Position(lng, lat)),
-                    zoom: 15,
-                  ),
+                  mb.CameraOptions(center: mb.Point(coordinates: mb.Position(lng, lat)), zoom: 15),
                   mb.MapAnimationOptions(duration: 500),
                 );
               },
@@ -431,7 +347,6 @@ class _HomePageState extends State<HomePage> {
     final Uri googleUri = Uri.parse(
       'https://www.google.com/maps/dir/?api=1&destination=$destLat,$destLng&travelmode=driving',
     );
-
     if (await canLaunchUrl(googleUri)) {
       await launchUrl(googleUri, mode: LaunchMode.externalApplication);
     } else {
@@ -439,17 +354,5 @@ class _HomePageState extends State<HomePage> {
         const SnackBar(content: Text('Could not launch Google Maps.')),
       );
     }
-  }
-}
-
-class SavedLocationButton extends StatelessWidget {
-  final VoidCallback onPressed;
-  const SavedLocationButton({super.key, required this.onPressed});
-  @override
-  Widget build(BuildContext context) {
-    return FloatingActionButton(
-      onPressed: onPressed,
-      child: Icon(Icons.bookmark),
-    );
   }
 }
