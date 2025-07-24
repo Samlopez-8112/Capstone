@@ -349,32 +349,40 @@ class _MapPageState extends State<MapPage> {
   }
 
   Future<void> _showPinnedLocations() async {
-    final user = FirebaseAuth.instance.currentUser;
-    if (user == null) return;
+  final user = FirebaseAuth.instance.currentUser;
+  if (user == null) return;
 
-    final snapshot = await FirebaseFirestore.instance
-        .collection('users')
-        .doc(user.uid)
-        .collection('pinned_locations')
-        .orderBy('timestamp', descending: true)
-        .get();
+  final snapshot = await FirebaseFirestore.instance
+      .collection('users')
+      .doc(user.uid)
+      .collection('pinned_locations')
+      .orderBy('timestamp', descending: true)
+      .get();
 
-    final favs = snapshot.docs.where((doc) => doc['isFavorite'] == true);
-    final recents = snapshot.docs.where((doc) => doc['isFavorite'] != true).take(3);
+  final favs = snapshot.docs.where((doc) {
+    final data = doc.data();
+    return data.containsKey('isFavorite') && data['isFavorite'] == true;
+  });
 
-    showModalBottomSheet(
-      context: context,
-      builder: (_) => ListView(
-        children: [
-          const ListTile(title: Text('Favorites')),
-          ...favs.map((doc) => _buildPinTile(doc, user.uid)),
-          const Divider(),
-          const ListTile(title: Text('Recent Pins')),
-          ...recents.map((doc) => _buildPinTile(doc, user.uid)),
-        ],
-      ),
-    );
-  }
+  final recents = snapshot.docs.where((doc) {
+    final data = doc.data();
+    return !data.containsKey('isFavorite') || data['isFavorite'] != true;
+  }).take(3);
+
+  showModalBottomSheet(
+    context: context,
+    builder: (_) => ListView(
+      children: [
+        const ListTile(title: Text('Favorites')),
+        ...favs.map((doc) => _buildPinTile(doc, user.uid)),
+        const Divider(),
+        const ListTile(title: Text('Recent Pins')),
+        ...recents.map((doc) => _buildPinTile(doc, user.uid)),
+      ],
+    ),
+  );
+}
+
 
   Widget _buildPinTile(QueryDocumentSnapshot doc, String uid) {
     final lat = doc['lat'];
