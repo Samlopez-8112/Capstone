@@ -44,6 +44,7 @@ class _MapPageState extends State<MapPage> {
     getLocationUpdates().then((_) {
       getPolylinePoints().then(generatePolyline);
     });
+    fixPinnedLocationData();
   }
 
   @override
@@ -513,4 +514,22 @@ class _MapPageState extends State<MapPage> {
       ),
     );
   }
+  Future<void> fixPinnedLocationData() async {
+  final user = FirebaseAuth.instance.currentUser;
+  if (user == null) return;
+
+  final snapshot = await FirebaseFirestore.instance
+      .collection('users')
+      .doc(user.uid)
+      .collection('pinned_locations')
+      .get();
+
+  for (final doc in snapshot.docs) {
+    final data = doc.data();
+    if (!data.containsKey('isFavorite')) {
+      await doc.reference.update({'isFavorite': false});
+    }
+  }
+}
+
 }
