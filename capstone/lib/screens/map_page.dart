@@ -24,18 +24,19 @@ class MapPage extends StatefulWidget {
 class _MapPageState extends State<MapPage> {
   final Completer<GoogleMapController> _mapController = Completer();
   final Location _location = Location();
-  LatLng? _currentPosition;
+  LatLng? _currentPosition; // user's current location
   bool isFollowingUser = true;
+  bool _isDialOpen = false;
 
   Map<PolylineId, Polyline> polylines = {};
   Map<MarkerId, Marker> markers = {};
   MarkerId? _searchMarkerId;
 
   double _searchRadius = 2000;
-  List<Map<String, dynamic>> _lastFetchedPOIs = [];
+  List<Map<String, dynamic>> _lastFetchedPOIs = []; //id for temporary search markers
 
-  static const LatLng _origin = LatLng(32.5232, -92.6379);
-  static const LatLng _destination = LatLng(32.5094, -92.1183);
+  static const LatLng _origin = LatLng(32.5232, -92.6379); //ruston
+  static const LatLng _destination = LatLng(32.5094, -92.1183); //monroe
 
   @override
   void initState() {
@@ -56,38 +57,48 @@ class _MapPageState extends State<MapPage> {
                   target: _currentPosition!,
                   zoom: 13,
                 ),
-                myLocationEnabled: true,
+                myLocationEnabled: true, // shows the user's location as a puck
                 markers: Set<Marker>.of(markers.values),
                 polylines: Set<Polyline>.of(polylines.values),
                 onMapCreated: (controller) => _mapController.complete(controller),
                 onLongPress: _handleLongPressPin,
               ),
+
+              // Search bar at the top; instantiation of autocomplete_search_bar.dart
               Positioned(
                 top: 50,
                 left: 15,
                 right: 15,
                 child: AutocompleteSearchBar(
-                  onSuggestionSelected: (LatLng coords) async {
+                  onSuggestionSelected: (LatLng coords) async {// following code is run on the click of a searched location
                     final controller = await _mapController.future;
                     setState(() {
-                      isFollowingUser = false;
+                      isFollowingUser = false; // stop camera from following user on search
+
+                      // remove previous search marker if it exists
                       if (_searchMarkerId != null) {
                         markers.remove(_searchMarkerId);
                       }
+
                       final markerId = MarkerId("search_temp");
-                      _searchMarkerId = markerId;
-                      markers[markerId] = Marker(
+                      _searchMarkerId = markerId; // create an id for a new search marker
+
+                      markers[markerId] = Marker( // on a search, place a marker at the searched location
                         markerId: markerId,
                         position: coords,
                         icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueCyan),
                         infoWindow: const InfoWindow(title: "Searched Location"),
                       );
                     });
-                    controller.animateCamera(CameraUpdate.newLatLngZoom(coords, 13));
+
+                    // move camera to a searched location
+                    controller.animateCamera(
+                      CameraUpdate.newLatLngZoom(
+                        coords, 13));
                   },
                 ),
               ),
-              Positioned(
+              Positioned( // signout button
                 top: 110,
                 right: 15,
                 child: ElevatedButton(
@@ -97,7 +108,9 @@ class _MapPageState extends State<MapPage> {
                   child: const Icon(Icons.logout),
                 ),
               ),
-              Positioned(
+              
+              if (_isDialOpen)
+              Positioned( // search radius bar 
                 bottom: 160,
                 left: 20,
                 right: 20,
@@ -122,7 +135,7 @@ class _MapPageState extends State<MapPage> {
                   ),
                 ),
               ),
-              Positioned(
+              Positioned( // speed dial search
                 bottom: 90,
                 left: 20,
                 child: SpeedDial(
@@ -130,6 +143,8 @@ class _MapPageState extends State<MapPage> {
                   activeIcon: Icons.close,
                   backgroundColor: Colors.blueAccent,
                   spacing: 12,
+                  onOpen: () => setState(() => _isDialOpen = true),// track whether the speed dial has been clicked
+                  onClose: () => setState(() => _isDialOpen = false), //initial click will open radius selection
                   children: PoiCategory.values.map((cat) {
                     return SpeedDialChild(
                       child: Image.asset(cat.iconPath, height: 24),
@@ -139,7 +154,8 @@ class _MapPageState extends State<MapPage> {
                   }).toList(),
                 ),
               ),
-              Positioned(
+
+              Positioned( // user track toggle
                 bottom: 90,
                 right: 20,
                 child: FloatingActionButton(
@@ -147,7 +163,10 @@ class _MapPageState extends State<MapPage> {
                     setState(() {
                       isFollowingUser = !isFollowingUser;
                       if (isFollowingUser && _searchMarkerId != null) {
+                        // remove search marker when returning to user
                         markers.remove(_searchMarkerId);
+                        // remove POI markers when returning to user
+                        markers.removeWhere((key, marker) => key.value.startsWith('poi_'));
                         _searchMarkerId = null;
                       }
                     });
@@ -158,7 +177,8 @@ class _MapPageState extends State<MapPage> {
                   child: Icon(isFollowingUser ? Icons.my_location : Icons.location_disabled),
                 ),
               ),
-              Positioned(
+
+              Positioned( // pinned locations
                 bottom: 20,
                 right: 20,
                 child: FloatingActionButton(
@@ -166,7 +186,8 @@ class _MapPageState extends State<MapPage> {
                   child: const Icon(Icons.bookmark),
                 ),
               ),
-              Positioned(
+
+              Positioned( // friends tab
                 bottom: 20,
                 left: 20,
                 child: ElevatedButton(
@@ -176,7 +197,8 @@ class _MapPageState extends State<MapPage> {
                   child: const Text("Friends"),
                 ),
               ),
-              Positioned(
+
+              Positioned( // show location-sharing friends
                 bottom: 160,
                 left: 20,
                 child: FloatingActionButton(
@@ -208,6 +230,7 @@ class _MapPageState extends State<MapPage> {
     controller.animateCamera(CameraUpdate.newLatLngZoom(pos, 13));
   }
 
+  // makes the route between two points
   Future<List<LatLng>> getPolylinePoints() async {
     final result = await PolylinePoints().getRouteBetweenCoordinates(
       request: PolylineRequest(
@@ -263,11 +286,11 @@ class _MapPageState extends State<MapPage> {
 
       setState(() {
         _lastFetchedPOIs = results;
-        markers.removeWhere((key, marker) => marker.infoWindow.title?.contains('POI') ?? false);
+        markers.removeWhere((key, marker) => key.value.startsWith('poi_'));
         for (final poi in results) {
           final lat = poi['geometry']['location']['lat'];
           final lng = poi['geometry']['location']['lng'];
-          final markerId = MarkerId(poi['place_id'] ?? '$lat$lng');
+          final markerId = MarkerId('poi_${poi['place_id'] ?? '$lat$lng'}');
           markers[markerId] = Marker(
             markerId: markerId,
             position: LatLng(lat, lng),
@@ -412,10 +435,12 @@ class _MapPageState extends State<MapPage> {
     );
   }
 
+    //help from chatgpt
   Future<void> _showSharingFriends() async {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) return;
 
+  // find all users who are sharing with current user
     final allUsers = await FirebaseFirestore.instance.collection('users').get();
     final sharedWithMe = <DocumentSnapshot>[];
 
@@ -439,6 +464,7 @@ class _MapPageState extends State<MapPage> {
       return;
     }
 
+    // help from chatgpt
     showModalBottomSheet(
       context: context,
       builder: (_) => ListView(
