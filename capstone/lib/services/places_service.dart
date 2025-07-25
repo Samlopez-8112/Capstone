@@ -5,10 +5,11 @@ import 'package:http/http.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:capstone/models/poi_category.dart';
 
-/// Places access assisted by:
-/// https://levelup.gitconnected.com/flutter-google-maps-autocomplete-searchbar-with-debouncing-f5a215ee7381
+// Places access assisted by:
+// https://levelup.gitconnected.com/flutter-google-maps-autocomplete-searchbar-with-debouncing-f5a215ee7381
 
-/// Suggestion class holds basic autocomplete prediction data.
+// Suggestion class holds a placeID and the descption, (title of a place)
+// More information can be gathered for future features
 @immutable
 class Suggestion {
   final String placeId;
@@ -17,15 +18,18 @@ class Suggestion {
   const Suggestion(this.placeId, this.description);
 }
 
-/// Handles Autocomplete and Place Details API calls
+// Class for interaction with Places API
+// more information can be gathered for future features
 class PlaceApiProvider {
   final Client client = Client();
 
-  /// sessionToken improves billing efficiency
+  // Session token groups requests together for billing
+  // this should reduce API costs
   final String? sessionToken;
 
   /// API Key loaded from .env file
   static final String apiKey = dotenv.get('GOOGLE_MAPS_API_KEY', fallback: 'key_not_found');
+
 
   PlaceApiProvider(this.sessionToken);
 
@@ -46,7 +50,7 @@ class PlaceApiProvider {
 
     try {
       final response = await client.post(requestUri, headers: headers, body: body);
-      if (response.statusCode == 200) {
+      if (response.statusCode == 200) { // if we get a response, place suggestions in the list
         return _parseSuggestions(response.body);
       } else {
         throw Exception('Failed to fetch suggestions: ${response.statusCode}');
@@ -56,10 +60,10 @@ class PlaceApiProvider {
     }
   }
 
-  /// Parses autocomplete suggestions from response
+  /// Parses autocomplete JSON suggestions into a list
   List<Suggestion> _parseSuggestions(String responseBody) {
     final result = jsonDecode(responseBody);
-    if (result['suggestions'] == null) return [];
+    if (result['suggestions'] == null) return []; // no results = empty list
     return result['suggestions']
         .map<Suggestion>((json) => Suggestion(
               json['placePrediction']['placeId'] as String,
@@ -68,7 +72,9 @@ class PlaceApiProvider {
         .toList();
   }
 
-  /// Fetch coordinates for a selected place
+  /// Retrieves latitude and longitude of a place (JSON), given google api's placeId
+                                                                           /// Returns a LatLng object, which represents coordinates.
+                                                                        
   Future<LatLng> getPlaceCoordinatesFromId(String placeId) async {
     final Uri requestUri = Uri.https(
       'places.googleapis.com',
@@ -82,13 +88,13 @@ class PlaceApiProvider {
 
     try {
       final response = await client.get(requestUri);
-      if (response.statusCode == 200) {
+      if (response.statusCode == 200) { // if we get a response, parse it to LatLng
         return _parseCoordinates(response.body);
       } else {
-        throw Exception('Failed to load place coordinates: ${response.statusCode}');
+        throw Exception('Failed to load place coordinates: ${response.statusCode}'); // throw an error for api issue
       }
     } catch (e) {
-      throw Exception('Request failed: $e');
+      throw Exception('Request failed: $e'); //throw an error for failed request
     }
   }
 

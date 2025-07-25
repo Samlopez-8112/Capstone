@@ -150,7 +150,12 @@ class _MapPageState extends State<MapPage> {
                     return SpeedDialChild(
                       child: Image.asset(cat.iconPath, height: 24),
                       label: cat.label,
-                      onTap: () => _fetchCategoryPOIs(cat),
+                      onTap: () {
+                        setState(() {
+                          isFollowingUser = false;
+                       });
+                      _fetchCategoryPOIs(cat);
+                      }
                     );
                   }).toList(),
                 ),
@@ -160,21 +165,27 @@ class _MapPageState extends State<MapPage> {
                 bottom: 90,
                 right: 20,
                 child: FloatingActionButton(
-                  onPressed: () {
-                    setState(() {
-                      isFollowingUser = !isFollowingUser;
-                      if (isFollowingUser && _searchMarkerId != null) {
-                        // remove search marker when returning to user
-                        markers.remove(_searchMarkerId);
-                        // remove POI markers when returning to user
-                        markers.removeWhere((key, marker) => key.value.startsWith('poi_'));
-                        _searchMarkerId = null;
-                      }
-                    });
-                    if (isFollowingUser && _currentPosition != null) {
-                      _cameraTo(_currentPosition!);
+                onPressed: () {
+                  setState(() {
+                    isFollowingUser = !isFollowingUser;
+
+                    // Remove temporary search marker if it exists
+                    if (isFollowingUser && _searchMarkerId != null) {
+                      markers.remove(_searchMarkerId);
+                      _searchMarkerId = null;
                     }
-                  },
+
+                    // Always remove POIs when returning to self
+                    if (isFollowingUser) {
+                      markers.removeWhere((key, marker) => key.value.startsWith('poi_'));
+                    }
+                 });
+
+  if (isFollowingUser && _currentPosition != null) {
+    _cameraTo(_currentPosition!);
+  }
+},
+
                   child: Icon(isFollowingUser ? Icons.my_location : Icons.location_disabled),
                 ),
               ),
@@ -514,6 +525,7 @@ class _MapPageState extends State<MapPage> {
       ),
     );
   }
+  
   Future<void> fixPinnedLocationData() async {
   final user = FirebaseAuth.instance.currentUser;
   if (user == null) return;
