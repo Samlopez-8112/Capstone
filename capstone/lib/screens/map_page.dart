@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:math';
+import 'package:capstone/screens/settings_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:location/location.dart';
@@ -217,6 +218,14 @@ class _MapPageState extends State<MapPage> {
                   onPressed: _showSharingFriends,
                   child: const Icon(Icons.people),
                 ),
+              ),
+
+              //Makes the button look like a gear and puts it in top left corner
+              IconButton(
+                icon: const Icon(Icons.settings),
+                onPressed: () {
+                  Navigator.push(context, MaterialPageRoute(builder: (_) => const SettingsScreen()));
+                },
               )
             ]),
     );
