@@ -44,6 +44,8 @@ class _MapPageState extends State<MapPage> {
   bool _showHeatmap = true;
   Timer? _boundsDebounce;
   StreamSubscription<QuerySnapshot<Map<String, dynamic>>>? _ratingsSub;
+  //maps each circle to rating doc fields
+  final Map<CircleId, Map<String, dynamic>> _circleMeta = {};
 
   @override
   void initState() {
@@ -83,6 +85,7 @@ class _MapPageState extends State<MapPage> {
                 onCameraMove: (_) => _scheduleBoundsRefresh(),
                 onCameraIdle: _refreshHeatForViewport,
                 onLongPress: _handleLongPressPin,
+                onTap: _onMapTap,
               ),
 
               // Search bar at the top; instantiation of autocomplete_search_bar.dart
@@ -318,6 +321,7 @@ class _MapPageState extends State<MapPage> {
       .listen((snap) {
         final now = DateTime.now();
         final Set<Circle> circles = {};
+        final Map<CircleId, Map<String, dynamic>> meta = {};
 
         for(final doc in snap.docs) {
           final d = doc.data();
@@ -343,6 +347,7 @@ class _MapPageState extends State<MapPage> {
 
           //circle radius in meters (cap for pref/visuals)
           final kernel = (radiusMi * 1609.34 * 0.35).clamp(80.0, 450.0);
+          final id = CircleId('${lat.toStringAsFixed(5)},${lng.toStringAsFixed(5)}_${doc.id}');
 
           circles.add(
             Circle(
@@ -354,12 +359,24 @@ class _MapPageState extends State<MapPage> {
                 fillColor: _colorForIntensity(intensity),
               ),
             );
+
+          meta[id] = {
+            'rating': rating,
+            'reasons': d['reasons'],
+            'personalExperienceDetail': d['personalExperienceDetail'],
+            'timestamp': ts,
+            'radiusMiles': radiusMi,
+            'center': {'lat': lat, 'lng': lng},
+          };
         }
 
         setState(() {
           _heatCircles
           ..clear()
           ..addAll(circles);
+          _circleMeta
+          ..clear()
+          ..addAll(meta);
         });
       }, onError: (e){
         debugPrint('Heatmap stream error: $e');
@@ -378,6 +395,97 @@ class _MapPageState extends State<MapPage> {
 
     final alpha = (40 + (t * 120)).round(); //40..160 alpha
     return col.withAlpha(alpha);
+  }
+
+  void _onMapTap(LatLng pos) {
+    if(!_showHeatmap || _heatCircles.isEmpty) return;
+
+    //Find circles that contain the tap (distance is radius)
+    final matches = _heatCircles.where((c) {
+      final d = _calculateDistanceMeters(pos, c.center.latitude, c.center.longitude);
+      return d <= c.radius;
+    }).toList();
+
+    if(matches.isEmpty) return;
+
+    //Prefer the closest center to the tap
+    matches.sort((a,b ) {
+      final da = _calculateDistanceMeters(pos, a.center.latitude, a.center.longitude);
+      final db = _calculateDistanceMeters(pos, b.center.latitude, b.center.longitude);
+      return da.compareTo(db);
+    });
+
+    final CircleId id = matches.first.circleId;
+    final data = _circleMeta[id];
+    if(data != null) _showRatingDetailsSheet(data);
+  }
+
+  void _showRatingDetailsSheet(Map<String, dynamic> d) {
+    final List reasons = (d['reasons'] as List?) ?? const [];
+    final String? detail = (d['personalExperienceDetail'] as String?)?.trim();
+    final double? rating = (d['rating'] as num?)?.toDouble();
+    final double? radiusMi = (d['radiusMiles'] as num?)?.toDouble();
+    final DateTime? ts = d['timestamp'] is Timestamp ? (d['timestamp'] as Timestamp).toDate() : d['timestamp'] as DateTime?;
+
+    showModalBottomSheet(
+      context: context,
+      showDragHandle: true,
+      builder: (_) => Padding(
+        padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
+        child: SingleChildScrollView(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(children: [
+                const Icon(Icons.shield_outlined),
+                const SizedBox(width: 8),
+                Text('Community rating', style: Theme.of(context).textTheme.titleMedium),
+                const Spacer(),
+                if(rating != null)
+                  Row(children: [
+                    const Icon(Icons.star, size: 18, color: Colors.amber),
+                    const SizedBox(width: 4),
+                    Text(rating.toStringAsFixed(1)),
+                  ]),
+              ]),
+              const SizedBox(height: 8),
+              if(radiusMi != null)
+                Text('Reported radius: ${radiusMi.toStringAsFixed(2)} mi',
+                  style: Theme.of(context).textTheme.bodySmall),
+              if(ts != null)
+                Text('Updated: ${ts.toLocal()}',
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(color: Colors.grey[600])),
+
+              const SizedBox(height: 12),
+              Text('Reasons', style: Theme.of(context).textTheme.labelLarge),
+              const SizedBox(height: 8),
+              if(reasons.isEmpty)
+                const Text('No reasons provided')
+              else
+                Wrap(
+                  spacing: 8, runSpacing: 8,
+                  children: reasons.map<Widget>((r) => Chip(label: Text(r.toString()))).toList(),
+                ),
+              
+              if(detail != null && detail.isNotEmpty) ...[
+                const SizedBox(height: 12),
+                Text('Personal experience', style: Theme.of(context).textTheme.labelLarge),
+                const SizedBox(height: 6),
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: Colors.grey.shade100,
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Text(detail),
+                ),
+              ],
+            ],
+          ),
+        ),
+      )
+    );
   }
 
   Future<void> getLocationUpdates() async {
