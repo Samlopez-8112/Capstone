@@ -9,7 +9,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter_speed_dial/flutter_speed_dial.dart';
 import 'package:url_launcher/url_launcher.dart';
-
+import 'package:capstone/screens/CrowdSource_page.dart';
 import '../consts.dart';
 import '../models/poi_category.dart';
 import '../services/places_service.dart';
@@ -182,10 +182,10 @@ class _MapPageState extends State<MapPage> {
                     }
                  });
 
-  if (isFollowingUser && _currentPosition != null) {
-    _cameraTo(_currentPosition!);
-  }
-},
+                    if (isFollowingUser && _currentPosition != null) {
+                      _cameraTo(_currentPosition!);
+                    }
+                },
 
                   child: Icon(isFollowingUser ? Icons.my_location : Icons.location_disabled),
                 ),
@@ -219,6 +219,22 @@ class _MapPageState extends State<MapPage> {
                   child: const Icon(Icons.people),
                 ),
               ),
+
+              //Community rating
+              Positioned(
+              bottom: 160,
+              right: 20,
+              child: ElevatedButton.icon(
+                icon: const Icon(Icons.shield_outlined),
+                label: const Text("Rating"),
+                onPressed: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (context) => const RateAreaScreen()),
+                  );
+                },
+              ),
+            ),
 
               //Makes the button look like a gear and puts it in top left corner
               IconButton(
