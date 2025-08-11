@@ -39,6 +39,12 @@ class _MapPageState extends State<MapPage> {
   static const LatLng _origin = LatLng(32.5232, -92.6379); //ruston
   static const LatLng _destination = LatLng(32.5094, -92.1183); //monroe
 
+  //Heatmap overlay
+  final Set<Circle> _heatCircles = {};
+  bool _showHeatmap = true;
+  Timer? _boundsDebounce;
+  StreamSubscription<QuerySnapshot<Map<String, dynamic>>>? _ratingsSub;
+
   @override
   void initState() {
     super.initState();
@@ -46,6 +52,13 @@ class _MapPageState extends State<MapPage> {
       getPolylinePoints().then(generatePolyline);
     });
     fixPinnedLocationData();
+  }
+
+  @override
+  void dispose() {
+    _boundsDebounce?.cancel();
+    _ratingsSub?.cancel();
+    super.dispose();
   }
 
   @override
@@ -62,7 +75,13 @@ class _MapPageState extends State<MapPage> {
                 myLocationEnabled: true, // shows the user's location as a puck
                 markers: Set<Marker>.of(markers.values),
                 polylines: Set<Polyline>.of(polylines.values),
-                onMapCreated: (controller) => _mapController.complete(controller),
+                circles: _showHeatmap ? _heatCircles : {},
+                onMapCreated: (controller) { 
+                  _mapController.complete(controller);
+                  _scheduleBoundsRefresh();
+                },
+                onCameraMove: (_) => _scheduleBoundsRefresh(),
+                onCameraIdle: _refreshHeatForViewport,
                 onLongPress: _handleLongPressPin,
               ),
 
@@ -191,6 +210,27 @@ class _MapPageState extends State<MapPage> {
                 ),
               ),
 
+              //Heatmap toggle
+              Positioned(
+                bottom: 200,
+                right: 20,
+                child: FloatingActionButton(
+                  heroTag: 'heatToggle',
+                  mini: true,
+                  onPressed: () {
+                    setState(() => _showHeatmap = !_showHeatmap);
+                    if(_showHeatmap) {
+                      _scheduleBoundsRefresh();
+                    }else {
+                      _ratingsSub?.cancel();
+                      setState(() => _heatCircles.clear());
+                    }
+                  },
+                  child: Icon(
+                    _showHeatmap ? Icons.visibility : Icons.visibility_off),
+                ),
+              ),
+
               Positioned( // pinned locations
                 bottom: 20,
                 right: 20,
@@ -222,7 +262,7 @@ class _MapPageState extends State<MapPage> {
 
               //Community rating
               Positioned(
-              bottom: 160,
+              bottom: 150,
               right: 20,
               child: ElevatedButton.icon(
                 icon: const Icon(Icons.shield_outlined),
@@ -245,6 +285,99 @@ class _MapPageState extends State<MapPage> {
               )
             ]),
     );
+  }
+
+  //Heatmap helpers for color/intensity, viewport streaming
+  void _scheduleBoundsRefresh(){
+    _boundsDebounce?.cancel();
+    _boundsDebounce = Timer(const Duration(milliseconds: 250), _refreshHeatForViewport);
+  }
+
+  Future<void> _refreshHeatForViewport() async {
+    final controller = await _mapController.future;
+
+    LatLngBounds bounds;
+    try{
+      bounds = await controller.getVisibleRegion();
+    } catch(_) {
+      return;
+    }
+
+    final north = max(bounds.northeast.latitude, bounds.southwest.latitude);
+    final south = min(bounds.northeast.latitude, bounds.southwest.latitude);
+    final east = max(bounds.northeast.longitude, bounds.southwest.longitude);
+    final west = min(bounds.northeast.longitude, bounds.southwest.longitude);
+
+    _ratingsSub = FirebaseFirestore.instance
+      .collectionGroup('ratings')
+      .where('center.lat', isGreaterThanOrEqualTo: south)
+      .where('center.lat', isLessThanOrEqualTo: north)
+      .orderBy('center.lat')
+      .limit(1500)// tune for expected density
+      .snapshots()
+      .listen((snap) {
+        final now = DateTime.now();
+        final Set<Circle> circles = {};
+
+        for(final doc in snap.docs) {
+          final d = doc.data();
+          final lat = (d['center']?['lat'] as num?)?.toDouble();
+          final lng = (d['center']?['lng'] as num?)?.toDouble();
+          final rating = (d['rating'] as num?)?.toDouble();
+          final radiusMi = (d['radiusMiles'] as num?)?.toDouble() ?? 0.5;
+          final ts = (d['timestamp'] as Timestamp?)?.toDate();
+
+          if(lat == null || lng == null || rating == null) continue;
+
+          //client side logitude filter
+          if(lng < west || lng > east) continue;
+
+          //weight lower safety => higher intesity with time decay
+          final base = (5.0 - rating).clamp(0.0, 4.0); //5=safer
+          final ageDays = ts == null ? 0.0 : now.difference(ts).inHours / 24.0;
+          const halfLifeDays = 60.0; //tune: newer reports weigh more
+          final decay = pow(0.5, ageDays / halfLifeDays).toDouble(); //1..0
+          final intensity = (base * decay) / 4.0; // normalize 0..1
+
+          if(intensity <= 0.02) continue;
+
+          //circle radius in meters (cap for pref/visuals)
+          final kernel = (radiusMi * 1609.34 * 0.35).clamp(80.0, 450.0);
+
+          circles.add(
+            Circle(
+              circleId: CircleId(
+                '${lat.toStringAsFixed(5)},${lng.toStringAsFixed(5)}_${doc.id}'),
+                center: LatLng(lat, lng),
+                radius: kernel,
+                strokeWidth: 0,
+                fillColor: _colorForIntensity(intensity),
+              ),
+            );
+        }
+
+        setState(() {
+          _heatCircles
+          ..clear()
+          ..addAll(circles);
+        });
+      }, onError: (e){
+        debugPrint('Heatmap stream error: $e');
+      });
+  }
+
+  Color _colorForIntensity(double t) {
+    t = t.clamp(0.0, 1.0);
+    Color lerp(Color a, Color b, double x) =>
+      Color.lerp(a, b, x.clamp(0, 1))!;
+
+    // gradient green->yellow->red
+    final Color col = t < 0.5
+      ? lerp(Colors.green.shade400, Colors.yellow.shade600, t / 0.5)
+      : lerp(Colors.yellow.shade600, Colors.red.shade800, (t - 0.5) / 0.5);
+
+    final alpha = (40 + (t * 120)).round(); //40..160 alpha
+    return col.withAlpha(alpha);
   }
 
   Future<void> getLocationUpdates() async {
