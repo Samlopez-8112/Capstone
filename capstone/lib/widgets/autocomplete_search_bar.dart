@@ -63,7 +63,7 @@ class _AutocompleteSearchBarState extends State<AutocompleteSearchBar> {
   // Starts the session for Google Places
     void _startSearchSession() {
     _sessionToken = const Uuid().v4();
-    _placeApi = PlaceApiProvider(_sessionToken);
+    _placeApi = PlaceApiProvider();
   } 
   
    @override

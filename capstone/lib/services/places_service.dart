@@ -8,7 +8,7 @@ import 'package:capstone/models/poi_category.dart';
 // Places access assisted by:
 // https://levelup.gitconnected.com/flutter-google-maps-autocomplete-searchbar-with-debouncing-f5a215ee7381
 
-// Suggestion class holds a placeID and the descption, (title of a place)
+// Suggestion class holds a placeID and the description, (title of a place)
 // More information can be gathered for future features
 @immutable
 class Suggestion {
@@ -19,21 +19,17 @@ class Suggestion {
 }
 
 // Class for interaction with Places API
-// more information can be gathered for future features
+// More information can be gathered for future features
 class PlaceApiProvider {
   final Client client = Client();
-
-  // Session token groups requests together for billing
-  // this should reduce API costs
-  final String? sessionToken;
 
   /// API Key loaded from .env file
   static final String apiKey = dotenv.get('GOOGLE_MAPS_API_KEY', fallback: 'key_not_found');
 
+  // Constructor updated to no longer require sessionToken
+  PlaceApiProvider();
 
-  PlaceApiProvider(this.sessionToken);
-
-  /// Fetch autocomplete suggestions
+  /// Fetch autocomplete suggestions from Places API
   Future<List<Suggestion>> fetchSuggestions(String input, String languageCode) async {
     if (input.isEmpty) return <Suggestion>[];
 
@@ -45,7 +41,6 @@ class PlaceApiProvider {
     final body = jsonEncode({
       "input": input,
       "languageCode": languageCode,
-      "sessionToken": sessionToken,
     });
 
     try {
@@ -72,9 +67,8 @@ class PlaceApiProvider {
         .toList();
   }
 
-  /// Retrieves latitude and longitude of a place (JSON), given google api's placeId
-                                                                           /// Returns a LatLng object, which represents coordinates.
-                                                                        
+  /// Retrieves latitude and longitude of a place (JSON), given Google API's placeId
+  /// Returns a LatLng object, which represents coordinates.
   Future<LatLng> getPlaceCoordinatesFromId(String placeId) async {
     final Uri requestUri = Uri.https(
       'places.googleapis.com',
@@ -82,7 +76,6 @@ class PlaceApiProvider {
       {
         'key': apiKey,
         'fields': 'location',
-        'sessionToken': sessionToken,
       },
     );
 
@@ -91,10 +84,10 @@ class PlaceApiProvider {
       if (response.statusCode == 200) { // if we get a response, parse it to LatLng
         return _parseCoordinates(response.body);
       } else {
-        throw Exception('Failed to load place coordinates: ${response.statusCode}'); // throw an error for api issue
+        throw Exception('Failed to load place coordinates: ${response.statusCode}'); // throw an error for API issue
       }
     } catch (e) {
-      throw Exception('Request failed: $e'); //throw an error for failed request
+      throw Exception('Request failed: $e'); // throw an error for failed request
     }
   }
 
@@ -108,7 +101,41 @@ class PlaceApiProvider {
       final longitude = result['location']['longitude'];
       return LatLng(latitude, longitude);
     }
-    return const LatLng(0, 0);
+    return const LatLng(0, 0); // Return default LatLng if no location is found
+  }
+
+  /// Fetches detailed information for a place (e.g., phone number, website, rating)
+  Future<Map<String, dynamic>> fetchPlaceDetails(String placeId) async {
+    final url = Uri.https(
+      'maps.googleapis.com',
+      '/maps/api/place/details/json',
+      {
+        'place_id': placeId,
+        'fields': 'name,formatted_address,formatted_phone_number,website,rating,photos',
+        'key': apiKey,
+      },
+    );
+
+    try {
+      final response = await client.get(url);
+      if (response.statusCode == 200) {
+        return _parsePlaceDetails(response.body);
+      } else {
+        throw Exception('Failed to fetch place details: ${response.statusCode}');
+      }
+    } catch (e) {
+      throw Exception('Request failed: $e');
+    }
+  }
+
+  /// Parses place details from the response body
+  Map<String, dynamic> _parsePlaceDetails(String responseBody) {
+    final result = jsonDecode(responseBody);
+    if (result['status'] == 'OK' && result['result'] != null) {
+      return result['result'];
+    } else {
+      throw Exception('Failed to retrieve place details');
+    }
   }
 }
 
