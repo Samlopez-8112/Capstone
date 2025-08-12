@@ -1,6 +1,5 @@
 import 'dart:async';
 import 'dart:math';
-
 import 'package:capstone/screens/settings_screen.dart';
 import 'package:capstone/screens/CrowdSource_page.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -11,7 +10,6 @@ import 'package:flutter_speed_dial/flutter_speed_dial.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:location/location.dart';
 import 'package:url_launcher/url_launcher.dart';
-
 import '../consts.dart';
 import '../models/poi_category.dart';
 import '../services/places_service.dart';
@@ -45,19 +43,20 @@ class _MapPageState extends State<MapPage> {
   static const LatLng _origin = LatLng(32.5232, -92.6379); // ruston
   static const LatLng _destination = LatLng(32.5094, -92.1183); // monroe
 
-  // ===== Heatmap state =====
+  // Heatmap state 
   final Set<Circle> _heatCircles = {};
   bool _showHeatmap = true;
   Timer? _boundsDebounce;
   StreamSubscription<QuerySnapshot<Map<String, dynamic>>>? _ratingsSub;
+
   // maps each circleId to rating doc fields for the details bottom sheet
   final Map<CircleId, Map<String, dynamic>> _circleMeta = {};
 
   @override
   void initState() {
     super.initState();
-    _checkUserAuthentication();
-    getLocationUpdates().then((_) {
+      _checkUserAuthentication();
+      getLocationUpdates().then((_) {
       getPolylinePoints().then(generatePolyline);
     });
     fixPinnedLocationData();
@@ -324,9 +323,9 @@ class _MapPageState extends State<MapPage> {
                   ),
                 ),
 
-                // Settings (gear) — top-left
+                // Settings (gear)
                 Positioned(
-                  top: 50,
+                  top: 40,
                   left: 10,
                   child: IconButton(
                     icon: const Icon(Icons.settings),
@@ -344,7 +343,7 @@ class _MapPageState extends State<MapPage> {
     );
   }
 
-  // ===== Heatmap helpers (viewport streaming, color/intensity, details) =====
+  //Heatmap helpers (viewport streaming, color/intensity, details)
 
   void _scheduleBoundsRefresh() {
     _boundsDebounce?.cancel();
@@ -364,14 +363,10 @@ class _MapPageState extends State<MapPage> {
       return;
     }
 
-    final north =
-        max(bounds.northeast.latitude, bounds.southwest.latitude);
-    final south =
-        min(bounds.northeast.latitude, bounds.southwest.latitude);
-    final east =
-        max(bounds.northeast.longitude, bounds.southwest.longitude);
-    final west =
-        min(bounds.northeast.longitude, bounds.southwest.longitude);
+    final north = max(bounds.northeast.latitude, bounds.southwest.latitude);
+    final south = min(bounds.northeast.latitude, bounds.southwest.latitude);
+    final east = max(bounds.northeast.longitude, bounds.southwest.longitude);
+    final west = min(bounds.northeast.longitude, bounds.southwest.longitude);
 
     _ratingsSub?.cancel();
     _ratingsSub = FirebaseFirestore.instance
@@ -564,7 +559,7 @@ class _MapPageState extends State<MapPage> {
     );
   }
 
-  // ===== Location / camera / polyline =====
+  // Location / camera / polyline
 
   Future<void> getLocationUpdates() async {
     if (!await _location.serviceEnabled()) await _location.requestService();
@@ -609,7 +604,7 @@ class _MapPageState extends State<MapPage> {
     setState(() {});
   }
 
-  // ===== POIs / Places =====
+  // POIs / Places 
 
   // Handle marker tap and fetch place details (full info: name, address, phone, website, rating)
   Future<void> _handleMarkerTap(String placeId) async {
@@ -753,7 +748,7 @@ class _MapPageState extends State<MapPage> {
     );
   }
 
-  // ===== Pinned / friends =====
+  // Pinned / friends
 
   Future<void> _handleLongPressPin(LatLng pos) async {
     final user = FirebaseAuth.instance.currentUser;
@@ -940,7 +935,7 @@ class _MapPageState extends State<MapPage> {
     );
   }
 
-  // ===== Utilities =====
+  // Utilities
 
   double _calculateDistanceMeters(
       LatLng from, double lat2, double lng2) {
