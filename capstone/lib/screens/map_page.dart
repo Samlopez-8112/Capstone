@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:math';
+import 'package:capstone/screens/settings_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:location/location.dart';
@@ -8,9 +9,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter_speed_dial/flutter_speed_dial.dart';
 import 'package:url_launcher/url_launcher.dart';
-import 'dart:convert';
-import 'package:http/http.dart' as http;
-
+import 'package:capstone/screens/CrowdSource_page.dart';
 import '../consts.dart';
 import '../models/poi_category.dart';
 import '../services/places_service.dart';
@@ -40,24 +39,28 @@ class _MapPageState extends State<MapPage> {
   static const LatLng _origin = LatLng(32.5232, -92.6379); //ruston
   static const LatLng _destination = LatLng(32.5094, -92.1183); //monroe
 
+  //Heatmap overlay
+  final Set<Circle> _heatCircles = {};
+  bool _showHeatmap = true;
+  Timer? _boundsDebounce;
+  StreamSubscription<QuerySnapshot<Map<String, dynamic>>>? _ratingsSub;
+  //maps each circle to rating doc fields
+  final Map<CircleId, Map<String, dynamic>> _circleMeta = {};
+
   @override
   void initState() {
     super.initState();
-    _checkUserAuthentication();
     getLocationUpdates().then((_) {
       getPolylinePoints().then(generatePolyline);
     });
     fixPinnedLocationData();
   }
 
-  void _checkUserAuthentication() {
-    final user = FirebaseAuth.instance.currentUser;
-    if (user == null) {
-      // Redirect to login screen or show a message
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Please log in to continue.')),
-      );
-    }
+  @override
+  void dispose() {
+    _boundsDebounce?.cancel();
+    _ratingsSub?.cancel();
+    super.dispose();
   }
 
   @override
@@ -71,20 +74,27 @@ class _MapPageState extends State<MapPage> {
                   target: _currentPosition!,
                   zoom: 13,
                 ),
-                myLocationEnabled: true,
+                myLocationEnabled: true, // shows the user's location as a puck
                 markers: Set<Marker>.of(markers.values),
                 polylines: Set<Polyline>.of(polylines.values),
-                onMapCreated: (controller) => _mapController.complete(controller),
+                circles: _showHeatmap ? _heatCircles : {},
+                onMapCreated: (controller) { 
+                  _mapController.complete(controller);
+                  _scheduleBoundsRefresh();
+                },
+                onCameraMove: (_) => _scheduleBoundsRefresh(),
+                onCameraIdle: _refreshHeatForViewport,
                 onLongPress: _handleLongPressPin,
+                onTap: _onMapTap,
               ),
 
-              // Search bar at the top
+              // Search bar at the top; instantiation of autocomplete_search_bar.dart
               Positioned(
                 top: 50,
                 left: 15,
                 right: 15,
                 child: AutocompleteSearchBar(
-                  onSuggestionSelected: (LatLng coords) async {
+                  onSuggestionSelected: (LatLng coords) async {// following code is run on the click of a searched location
                     final controller = await _mapController.future;
                     setState(() {
                       isFollowingUser = false; // stop camera from following user on search
@@ -102,21 +112,17 @@ class _MapPageState extends State<MapPage> {
                         position: coords,
                         icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueCyan),
                         infoWindow: const InfoWindow(title: "Searched Location"),
-                        onTap: () async {
-                          await _handleMarkerTap("search_temp"); // Handle search marker tap
-                        },
                       );
                     });
 
-                    // move camera to the searched location
+                    // move camera to a searched location
                     controller.animateCamera(
                       CameraUpdate.newLatLngZoom(
                         coords, 13));
                   },
                 ),
               ),
-              // Sign-out button
-              Positioned(
+              Positioned( // signout button
                 top: 110,
                 right: 15,
                 child: ElevatedButton(
@@ -127,9 +133,8 @@ class _MapPageState extends State<MapPage> {
                 ),
               ),
               
-              // Search radius bar
               if (_isDialOpen)
-              Positioned(
+              Positioned( // search radius bar 
                 bottom: 160,
                 left: 20,
                 right: 20,
@@ -154,8 +159,7 @@ class _MapPageState extends State<MapPage> {
                   ),
                 ),
               ),
-              // Speed dial search
-              Positioned(
+              Positioned( // speed dial search
                 bottom: 90,
                 left: 20,
                 child: SpeedDial(
@@ -163,8 +167,8 @@ class _MapPageState extends State<MapPage> {
                   activeIcon: Icons.close,
                   backgroundColor: Colors.blueAccent,
                   spacing: 12,
-                  onOpen: () => setState(() => _isDialOpen = true),
-                  onClose: () => setState(() => _isDialOpen = false),
+                  onOpen: () => setState(() => _isDialOpen = true),// track whether the speed dial has been clicked
+                  onClose: () => setState(() => _isDialOpen = false), //initial click will open radius selection
                   children: PoiCategory.values.map((cat) {
                     return SpeedDialChild(
                       child: Image.asset(cat.iconPath, height: 24),
@@ -172,45 +176,65 @@ class _MapPageState extends State<MapPage> {
                       onTap: () {
                         setState(() {
                           isFollowingUser = false;
-                        });
-                        _fetchCategoryPOIs(cat);
+                       });
+                      _fetchCategoryPOIs(cat);
                       }
                     );
                   }).toList(),
                 ),
               ),
 
-              // User track toggle button
-              Positioned(
+              Positioned( // user track toggle
                 bottom: 90,
                 right: 20,
                 child: FloatingActionButton(
-                  onPressed: () {
-                    setState(() {
-                      isFollowingUser = !isFollowingUser;
+                onPressed: () {
+                  setState(() {
+                    isFollowingUser = !isFollowingUser;
 
-                      // Remove temporary search marker if it exists
-                      if (isFollowingUser && _searchMarkerId != null) {
-                        markers.remove(_searchMarkerId);
-                        _searchMarkerId = null;
-                      }
+                    // Remove temporary search marker if it exists
+                    if (isFollowingUser && _searchMarkerId != null) {
+                      markers.remove(_searchMarkerId);
+                      _searchMarkerId = null;
+                    }
 
-                      // Always remove POIs when returning to self
-                      if (isFollowingUser) {
-                        markers.removeWhere((key, marker) => key.value.startsWith('poi_'));
-                      }
-                    });
+                    // Always remove POIs when returning to self
+                    if (isFollowingUser) {
+                      markers.removeWhere((key, marker) => key.value.startsWith('poi_'));
+                    }
+                 });
 
                     if (isFollowingUser && _currentPosition != null) {
                       _cameraTo(_currentPosition!);
                     }
-                  },
+                },
+
                   child: Icon(isFollowingUser ? Icons.my_location : Icons.location_disabled),
                 ),
               ),
 
-              // Pinned locations
+              //Heatmap toggle
               Positioned(
+                bottom: 200,
+                right: 20,
+                child: FloatingActionButton(
+                  heroTag: 'heatToggle',
+                  mini: true,
+                  onPressed: () {
+                    setState(() => _showHeatmap = !_showHeatmap);
+                    if(_showHeatmap) {
+                      _scheduleBoundsRefresh();
+                    }else {
+                      _ratingsSub?.cancel();
+                      setState(() => _heatCircles.clear());
+                    }
+                  },
+                  child: Icon(
+                    _showHeatmap ? Icons.visibility : Icons.visibility_off),
+                ),
+              ),
+
+              Positioned( // pinned locations
                 bottom: 20,
                 right: 20,
                 child: FloatingActionButton(
@@ -219,8 +243,7 @@ class _MapPageState extends State<MapPage> {
                 ),
               ),
 
-              // Friends tab
-              Positioned(
+              Positioned( // friends tab
                 bottom: 20,
                 left: 20,
                 child: ElevatedButton(
@@ -231,16 +254,237 @@ class _MapPageState extends State<MapPage> {
                 ),
               ),
 
-              // Show location-sharing friends
-              Positioned(
+              Positioned( // show location-sharing friends
                 bottom: 160,
                 left: 20,
                 child: FloatingActionButton(
                   onPressed: _showSharingFriends,
                   child: const Icon(Icons.people),
                 ),
+              ),
+
+              //Community rating
+              Positioned(
+              bottom: 150,
+              right: 20,
+              child: ElevatedButton.icon(
+                icon: const Icon(Icons.shield_outlined),
+                label: const Text("Rating"),
+                onPressed: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (context) => const RateAreaScreen()),
+                  );
+                },
+              ),
+            ),
+
+              //Makes the button look like a gear and puts it in top left corner
+              IconButton(
+                icon: const Icon(Icons.settings),
+                onPressed: () {
+                  Navigator.push(context, MaterialPageRoute(builder: (_) => const SettingsScreen()));
+                },
               )
             ]),
+    );
+  }
+
+  //Heatmap helpers for color/intensity, viewport streaming
+  void _scheduleBoundsRefresh(){
+    _boundsDebounce?.cancel();
+    _boundsDebounce = Timer(const Duration(milliseconds: 250), _refreshHeatForViewport);
+  }
+
+  Future<void> _refreshHeatForViewport() async {
+    final controller = await _mapController.future;
+
+    LatLngBounds bounds;
+    try{
+      bounds = await controller.getVisibleRegion();
+    } catch(_) {
+      return;
+    }
+
+    final north = max(bounds.northeast.latitude, bounds.southwest.latitude);
+    final south = min(bounds.northeast.latitude, bounds.southwest.latitude);
+    final east = max(bounds.northeast.longitude, bounds.southwest.longitude);
+    final west = min(bounds.northeast.longitude, bounds.southwest.longitude);
+
+    _ratingsSub = FirebaseFirestore.instance
+      .collectionGroup('ratings')
+      .where('center.lat', isGreaterThanOrEqualTo: south)
+      .where('center.lat', isLessThanOrEqualTo: north)
+      .orderBy('center.lat')
+      .limit(1500)// tune for expected density
+      .snapshots()
+      .listen((snap) {
+        final now = DateTime.now();
+        final Set<Circle> circles = {};
+        final Map<CircleId, Map<String, dynamic>> meta = {};
+
+        for(final doc in snap.docs) {
+          final d = doc.data();
+          final lat = (d['center']?['lat'] as num?)?.toDouble();
+          final lng = (d['center']?['lng'] as num?)?.toDouble();
+          final rating = (d['rating'] as num?)?.toDouble();
+          final radiusMi = (d['radiusMiles'] as num?)?.toDouble() ?? 0.5;
+          final ts = (d['timestamp'] as Timestamp?)?.toDate();
+
+          if(lat == null || lng == null || rating == null) continue;
+
+          //client side logitude filter
+          if(lng < west || lng > east) continue;
+
+          //weight lower safety => higher intesity with time decay
+          final base = (5.0 - rating).clamp(0.0, 4.0); //5=safer
+          final ageDays = ts == null ? 0.0 : now.difference(ts).inHours / 24.0;
+          const halfLifeDays = 60.0; //tune: newer reports weigh more
+          final decay = pow(0.5, ageDays / halfLifeDays).toDouble(); //1..0
+          final intensity = (base * decay) / 4.0; // normalize 0..1
+
+          if(intensity <= 0.02) continue;
+
+          //circle radius in meters (cap for pref/visuals)
+          final kernel = (radiusMi * 1609.34 * 0.35).clamp(80.0, 450.0);
+          final id = CircleId('${lat.toStringAsFixed(5)},${lng.toStringAsFixed(5)}_${doc.id}');
+
+          circles.add(
+            Circle(
+              circleId: CircleId(
+                '${lat.toStringAsFixed(5)},${lng.toStringAsFixed(5)}_${doc.id}'),
+                center: LatLng(lat, lng),
+                radius: kernel,
+                strokeWidth: 0,
+                fillColor: _colorForIntensity(intensity),
+              ),
+            );
+
+          meta[id] = {
+            'rating': rating,
+            'reasons': d['reasons'],
+            'personalExperienceDetail': d['personalExperienceDetail'],
+            'timestamp': ts,
+            'radiusMiles': radiusMi,
+            'center': {'lat': lat, 'lng': lng},
+          };
+        }
+
+        setState(() {
+          _heatCircles
+          ..clear()
+          ..addAll(circles);
+          _circleMeta
+          ..clear()
+          ..addAll(meta);
+        });
+      }, onError: (e){
+        debugPrint('Heatmap stream error: $e');
+      });
+  }
+
+  Color _colorForIntensity(double t) {
+    t = t.clamp(0.0, 1.0);
+    Color lerp(Color a, Color b, double x) =>
+      Color.lerp(a, b, x.clamp(0, 1))!;
+
+    // gradient green->yellow->red
+    final Color col = t < 0.5
+      ? lerp(Colors.green.shade400, Colors.yellow.shade600, t / 0.5)
+      : lerp(Colors.yellow.shade600, Colors.red.shade800, (t - 0.5) / 0.5);
+
+    final alpha = (40 + (t * 120)).round(); //40..160 alpha
+    return col.withAlpha(alpha);
+  }
+
+  void _onMapTap(LatLng pos) {
+    if(!_showHeatmap || _heatCircles.isEmpty) return;
+
+    //Find circles that contain the tap (distance is radius)
+    final matches = _heatCircles.where((c) {
+      final d = _calculateDistanceMeters(pos, c.center.latitude, c.center.longitude);
+      return d <= c.radius;
+    }).toList();
+
+    if(matches.isEmpty) return;
+
+    //Prefer the closest center to the tap
+    matches.sort((a,b ) {
+      final da = _calculateDistanceMeters(pos, a.center.latitude, a.center.longitude);
+      final db = _calculateDistanceMeters(pos, b.center.latitude, b.center.longitude);
+      return da.compareTo(db);
+    });
+
+    final CircleId id = matches.first.circleId;
+    final data = _circleMeta[id];
+    if(data != null) _showRatingDetailsSheet(data);
+  }
+
+  void _showRatingDetailsSheet(Map<String, dynamic> d) {
+    final List reasons = (d['reasons'] as List?) ?? const [];
+    final String? detail = (d['personalExperienceDetail'] as String?)?.trim();
+    final double? rating = (d['rating'] as num?)?.toDouble();
+    final double? radiusMi = (d['radiusMiles'] as num?)?.toDouble();
+    final DateTime? ts = d['timestamp'] is Timestamp ? (d['timestamp'] as Timestamp).toDate() : d['timestamp'] as DateTime?;
+
+    showModalBottomSheet(
+      context: context,
+      showDragHandle: true,
+      builder: (_) => Padding(
+        padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
+        child: SingleChildScrollView(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(children: [
+                const Icon(Icons.shield_outlined),
+                const SizedBox(width: 8),
+                Text('Community rating', style: Theme.of(context).textTheme.titleMedium),
+                const Spacer(),
+                if(rating != null)
+                  Row(children: [
+                    const Icon(Icons.star, size: 18, color: Colors.amber),
+                    const SizedBox(width: 4),
+                    Text(rating.toStringAsFixed(1)),
+                  ]),
+              ]),
+              const SizedBox(height: 8),
+              if(radiusMi != null)
+                Text('Reported radius: ${radiusMi.toStringAsFixed(2)} mi',
+                  style: Theme.of(context).textTheme.bodySmall),
+              if(ts != null)
+                Text('Updated: ${ts.toLocal()}',
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(color: Colors.grey[600])),
+
+              const SizedBox(height: 12),
+              Text('Reasons', style: Theme.of(context).textTheme.labelLarge),
+              const SizedBox(height: 8),
+              if(reasons.isEmpty)
+                const Text('No reasons provided')
+              else
+                Wrap(
+                  spacing: 8, runSpacing: 8,
+                  children: reasons.map<Widget>((r) => Chip(label: Text(r.toString()))).toList(),
+                ),
+              
+              if(detail != null && detail.isNotEmpty) ...[
+                const SizedBox(height: 12),
+                Text('Personal experience', style: Theme.of(context).textTheme.labelLarge),
+                const SizedBox(height: 6),
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: Colors.grey.shade100,
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Text(detail),
+                ),
+              ],
+            ],
+          ),
+        ),
+      )
     );
   }
 
@@ -288,90 +532,24 @@ class _MapPageState extends State<MapPage> {
     setState(() {});
   }
 
-  // Handle marker tap and fetch place details
-  Future<void> _handleMarkerTap(String placeId) async {
-    try {
-      final placeDetails = await PlaceApiProvider().fetchPlaceDetails(placeId);
-      _showPlaceDetailsBottomSheet(placeDetails);
-    } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error fetching place details: $e')),
-      );
-    }
-  }
-
-  // Display the place details in a bottom sheet
-  void _showPlaceDetailsBottomSheet(Map<String, dynamic> placeDetails) {
-    showModalBottomSheet(
-      context: context,
-      builder: (ctx) => Padding(
-        padding: const EdgeInsets.all(16.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(
-              placeDetails['name'] ?? 'No name',
-              style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
-            ),
-            SizedBox(height: 10),
-            Text('Address: ${placeDetails['formatted_address'] ?? 'No address'}'),
-            SizedBox(height: 10),
-            Text('Phone: ${placeDetails['formatted_phone_number'] ?? 'No phone number'}'),
-            SizedBox(height: 10),
-            Text('Website: ${placeDetails['website'] ?? 'No website'}'),
-            SizedBox(height: 10),
-            Text('Rating: ${placeDetails['rating'] ?? 'No rating'}'),
-            SizedBox(height: 10),
-            ElevatedButton(
-              onPressed: () => _launchNavigation(
-                placeDetails['geometry']?['location']?['lat'] ?? 0.0,
-                placeDetails['geometry']?['location']?['lng'] ?? 0.0,
-              ),
-              child: Text('Navigate to this place'),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  // Launch Google Maps for navigation
-  Future<void> _launchNavigation(double lat, double lng) async {
-    final uri = Uri.parse('https://www.google.com/maps/dir/?api=1&destination=$lat,$lng&travelmode=driving');
-    if (await canLaunchUrl(uri)) {
-      await launchUrl(uri, mode: LaunchMode.externalApplication);
-    } else {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Could not launch Google Maps.')),
-      );
-    }
-  }
-
   Future<void> _handleLongPressPin(LatLng pos) async {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) return;
 
-    try {
-      await FirebaseFirestore.instance
-          .collection('users')
-          .doc(user.uid)
-          .collection('pinned_locations')
-          .add({
-        'lat': pos.latitude,
-        'lng': pos.longitude,
-        'timestamp': FieldValue.serverTimestamp(),
-        'isFavorite': false,
-      });
+    await FirebaseFirestore.instance
+        .collection('users')
+        .doc(user.uid)
+        .collection('pinned_locations')
+        .add({
+      'lat': pos.latitude,
+      'lng': pos.longitude,
+      'timestamp': FieldValue.serverTimestamp(),
+      'isFavorite': false,
+    });
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Pinned location saved!')),
-      );
-    } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error saving pinned location: $e')),
-      );
-    }
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Pinned location saved!')),
+    );
   }
 
   Future<void> _fetchCategoryPOIs(PoiCategory category) async {
@@ -391,11 +569,9 @@ class _MapPageState extends State<MapPage> {
           final lat = poi['geometry']['location']['lat'];
           final lng = poi['geometry']['location']['lng'];
           final markerId = MarkerId('poi_${poi['place_id'] ?? '$lat$lng'}');
-          final placeId = poi['place_id']; 
           markers[markerId] = Marker(
             markerId: markerId,
-            position: LatLng(lat, lng),  
-            onTap: placeId == null ? null : () => _handleMarkerTap(placeId),
+            position: LatLng(lat, lng),
             infoWindow: InfoWindow(
               title: poi['name'] ?? 'POI',
               snippet: poi['vicinity'] ?? '',
@@ -462,7 +638,7 @@ class _MapPageState extends State<MapPage> {
     return R * 2 * asin(sqrt(a));
   }
 
-  Future<void> _launchDirections(double lat, double lng) async {
+  Future<void> _launchNavigation(double lat, double lng) async {
     final uri = Uri.parse('https://www.google.com/maps/dir/?api=1&destination=$lat,$lng&travelmode=driving');
     if (await canLaunchUrl(uri)) {
       await launchUrl(uri, mode: LaunchMode.externalApplication);
@@ -474,39 +650,40 @@ class _MapPageState extends State<MapPage> {
   }
 
   Future<void> _showPinnedLocations() async {
-    final user = FirebaseAuth.instance.currentUser;
-    if (user == null) return;
+  final user = FirebaseAuth.instance.currentUser;
+  if (user == null) return;
 
-    final snapshot = await FirebaseFirestore.instance
-        .collection('users')
-        .doc(user.uid)
-        .collection('pinned_locations')
-        .orderBy('timestamp', descending: true)
-        .get();
+  final snapshot = await FirebaseFirestore.instance
+      .collection('users')
+      .doc(user.uid)
+      .collection('pinned_locations')
+      .orderBy('timestamp', descending: true)
+      .get();
 
-    final favs = snapshot.docs.where((doc) {
-      final data = doc.data();
-      return data.containsKey('isFavorite') && data['isFavorite'] == true;
-    });
+  final favs = snapshot.docs.where((doc) {
+    final data = doc.data();
+    return data.containsKey('isFavorite') && data['isFavorite'] == true;
+  });
 
-    final recents = snapshot.docs.where((doc) {
-      final data = doc.data();
-      return !data.containsKey('isFavorite') || data['isFavorite'] != true;
-    }).take(3);
+  final recents = snapshot.docs.where((doc) {
+    final data = doc.data();
+    return !data.containsKey('isFavorite') || data['isFavorite'] != true;
+  }).take(3);
 
-    showModalBottomSheet(
-      context: context,
-      builder: (_) => ListView(
-        children: [
-          const ListTile(title: Text('Favorites')),
-          ...favs.map((doc) => _buildPinTile(doc, user.uid)),
-          const Divider(),
-          const ListTile(title: Text('Recent Pins')),
-          ...recents.map((doc) => _buildPinTile(doc, user.uid)),
-        ],
-      ),
-    );
-  }
+  showModalBottomSheet(
+    context: context,
+    builder: (_) => ListView(
+      children: [
+        const ListTile(title: Text('Favorites')),
+        ...favs.map((doc) => _buildPinTile(doc, user.uid)),
+        const Divider(),
+        const ListTile(title: Text('Recent Pins')),
+        ...recents.map((doc) => _buildPinTile(doc, user.uid)),
+      ],
+    ),
+  );
+}
+
 
   Widget _buildPinTile(QueryDocumentSnapshot doc, String uid) {
     final lat = doc['lat'];
@@ -536,29 +713,12 @@ class _MapPageState extends State<MapPage> {
     );
   }
 
-  Future<void> fixPinnedLocationData() async {
-    final user = FirebaseAuth.instance.currentUser;
-    if (user == null) return;
-
-    final snapshot = await FirebaseFirestore.instance
-        .collection('users')
-        .doc(user.uid)
-        .collection('pinned_locations')
-        .get();
-
-    for (final doc in snapshot.docs) {
-      final data = doc.data();
-      if (!data.containsKey('isFavorite')) {
-        await doc.reference.update({'isFavorite': false});
-      }
-    }
-  }
-
+    //help from chatgpt
   Future<void> _showSharingFriends() async {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) return;
 
-    // find all users who are sharing with current user
+  // find all users who are sharing with current user
     final allUsers = await FirebaseFirestore.instance.collection('users').get();
     final sharedWithMe = <DocumentSnapshot>[];
 
@@ -631,4 +791,23 @@ class _MapPageState extends State<MapPage> {
       ),
     );
   }
+  
+  Future<void> fixPinnedLocationData() async {
+  final user = FirebaseAuth.instance.currentUser;
+  if (user == null) return;
+
+  final snapshot = await FirebaseFirestore.instance
+      .collection('users')
+      .doc(user.uid)
+      .collection('pinned_locations')
+      .get();
+
+  for (final doc in snapshot.docs) {
+    final data = doc.data();
+    if (!data.containsKey('isFavorite')) {
+      await doc.reference.update({'isFavorite': false});
+    }
+  }
+}
+
 }
