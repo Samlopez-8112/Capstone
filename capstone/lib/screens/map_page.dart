@@ -272,19 +272,32 @@ class _MapPageState extends State<MapPage> {
 
               //Community rating
               Positioned(
-              bottom: 150,
-              right: 20,
-              child: ElevatedButton.icon(
-                icon: const Icon(Icons.shield_outlined),
-                label: const Text("Rating"),
-                onPressed: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(builder: (context) => const RateAreaScreen()),
-                  );
-                },
+                bottom: 150,
+                right: 20,
+                child: ElevatedButton.icon(
+                  icon: const Icon(Icons.shield_outlined),
+                  label: const Text("Rating"),
+                  onPressed: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(builder: (context) => const RateAreaScreen()),
+                    );
+                  },
+                ),
               ),
-            ),
+
+              // cancel route button
+              if (_destination != null)
+                Positioned(
+                  top: 115,
+                  left: 15,
+                  child: FloatingActionButton(
+                    heroTag: "cancelRouteBtn",
+                    backgroundColor: Colors.red,
+                    onPressed: _cancelRoute,
+                    child: const Icon(Icons.close),
+                  ),
+                ),
 
               //Makes the button look like a gear and puts it in top left corner
               IconButton(
@@ -548,6 +561,18 @@ class _MapPageState extends State<MapPage> {
       points: coordinates,
     );
     setState(() {});
+  }
+
+  void _cancelRoute() {
+    setState(() {
+      _destination = null;
+      polylines.clear();
+      // Optionally remove destination marker
+      if (_searchMarkerId != null) {
+        markers.remove(_searchMarkerId);
+        _searchMarkerId = null;
+      }
+    });
   }
 
   Future<void> _handleLongPressPin(LatLng pos) async {
