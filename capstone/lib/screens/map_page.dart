@@ -36,8 +36,8 @@ class _MapPageState extends State<MapPage> {
   double _searchRadius = 2000;
   List<Map<String, dynamic>> _lastFetchedPOIs = []; //id for temporary search markers
 
-  static LatLng? _origin = LatLng(32.5232, -92.6379); //ruston
-  static const LatLng _destination = LatLng(32.5094, -92.1183); //monroe
+  static LatLng? _origin;
+  static LatLng? _destination;
 
   //Heatmap overlay
   final Set<Circle> _heatCircles = {};
@@ -98,6 +98,7 @@ class _MapPageState extends State<MapPage> {
                     final controller = await _mapController.future;
                     setState(() {
                       isFollowingUser = false; // stop camera from following user on search
+                      _destination = coords;
 
                       // remove previous search marker if it exists
                       if (_searchMarkerId != null) {
@@ -119,6 +120,12 @@ class _MapPageState extends State<MapPage> {
                     controller.animateCamera(
                       CameraUpdate.newLatLngZoom(
                         coords, 13));
+                    
+                    // If we already know the origin, update the route
+                    if (_origin != null && _destination != null) {
+                      final points = await getPolylinePoints();
+                      generatePolyline(points);
+                    }
                   },
                 ),
               ),
@@ -516,11 +523,15 @@ class _MapPageState extends State<MapPage> {
     }
 
     _origin = _currentPosition;
+
+    if (_destination == null) {
+      return [];
+    }
     
     final result = await PolylinePoints().getRouteBetweenCoordinates(
       request: PolylineRequest(
         origin: PointLatLng(_origin!.latitude, _origin!.longitude),
-        destination: PointLatLng(_destination.latitude, _destination.longitude),
+        destination: PointLatLng(_destination!.latitude, _destination!.longitude),
         mode: TravelMode.driving,
       ),
       googleApiKey: GOOGLE_MAPS_API_KEY,
