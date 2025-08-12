@@ -36,7 +36,7 @@ class _MapPageState extends State<MapPage> {
   double _searchRadius = 2000;
   List<Map<String, dynamic>> _lastFetchedPOIs = []; //id for temporary search markers
 
-  static const LatLng _origin = LatLng(32.5232, -92.6379); //ruston
+  static LatLng? _origin = LatLng(32.5232, -92.6379); //ruston
   static const LatLng _destination = LatLng(32.5094, -92.1183); //monroe
 
   //Heatmap overlay
@@ -510,9 +510,16 @@ class _MapPageState extends State<MapPage> {
 
   // makes the route between two points
   Future<List<LatLng>> getPolylinePoints() async {
+    if (_currentPosition == null) {
+      LocationData locationData = await _location.getLocation();
+      _currentPosition = LatLng(locationData.latitude!, locationData.longitude!);
+    }
+
+    _origin = _currentPosition;
+    
     final result = await PolylinePoints().getRouteBetweenCoordinates(
       request: PolylineRequest(
-        origin: PointLatLng(_origin.latitude, _origin.longitude),
+        origin: PointLatLng(_origin!.latitude, _origin!.longitude),
         destination: PointLatLng(_destination.latitude, _destination.longitude),
         mode: TravelMode.driving,
       ),
