@@ -97,6 +97,7 @@ flutter:
 
   assets:
     - env # accesses .env file through this asset
+    - assets/crime_example.json
     - assets/icon/hospital.png 
     - assets/icon/gas.png
     - assets/icon/police.png

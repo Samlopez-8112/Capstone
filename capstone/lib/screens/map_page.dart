@@ -15,6 +15,9 @@ import '../models/poi_category.dart';
 import '../services/places_service.dart';
 import '../widgets/autocomplete_search_bar.dart';
 import 'friend_screen.dart';
+import '../models/crime_incident.dart';
+import '../services/crime_fixture_data_source.dart';
+import '../models/crime_severity.dart';
 
 class MapPage extends StatefulWidget {
   const MapPage({super.key});
@@ -29,6 +32,16 @@ class _MapPageState extends State<MapPage> {
   LatLng? _currentPosition; // user’s current location
   bool isFollowingUser = true;
   bool _isDialOpen = false;
+
+
+  // Crime overlay
+  final FixtureCrimeDataSource _crimeSource = FixtureCrimeDataSource(path: 'assets/crime_example.json'); // see crime data source service
+  List<CrimeIncident> _lastCrimes = [];
+  static const _crimePrefix = 'crime_'; // mark crime markers with a prefix for easier cleanup
+
+  // Crime radius bar
+  double _crimeRadius = 1609.34; // default to 1 mile, in meters
+  LatLng? _crimeCenter; // center captured on hold
 
   // Map overlays
   final Map<PolylineId, Polyline> polylines = {};
@@ -99,7 +112,7 @@ class _MapPageState extends State<MapPage> {
                   },
                   onCameraMove: (_) => _scheduleBoundsRefresh(),
                   onCameraIdle: _refreshHeatForViewport,
-                  onLongPress: _handleLongPressPin,
+                  onLongPress: _onMapLongPress,
                   onTap: _onMapTap,
                 ),
 
@@ -242,6 +255,7 @@ class _MapPageState extends State<MapPage> {
                         if (isFollowingUser) {
                           markers.removeWhere((key, marker) =>
                               key.value.startsWith('poi_'));
+                              _clearCrimeMarkers(); // clear crime markers as well
                         }
                       });
 
@@ -977,32 +991,248 @@ class _MapPageState extends State<MapPage> {
     );
   }
 
-  // Utilities
-
-  double _calculateDistanceMeters(
-      LatLng from, double lat2, double lng2) {
-    const R = 6371000;
-    final dLat = (lat2 - from.latitude) * (pi / 180);
-    final dLng = (lng2 - from.longitude) * (pi / 180);
-    final a = 0.5 -
-        cos(dLat) / 2 +
-        cos(from.latitude * pi / 180) *
-            cos(lat2 * pi / 180) *
-            (1 - cos(dLng)) / 2;
-    return R * 2 * asin(sqrt(a));
+  // Remove all markers whose MarkerId.value have "crime_" prefix
+  void _clearCrimeMarkers() {
+    markers.removeWhere((id, _) => id.value.startsWith(_crimePrefix));
+    setState(() {});
   }
 
-  Future<void> _launchNavigation(double lat, double lng) async {
-    final uri = Uri.parse(
-        'https://www.google.com/maps/dir/?api=1&destination=$lat,$lng&travelmode=driving');
-    if (await canLaunchUrl(uri)) {
-      await launchUrl(uri, mode: LaunchMode.externalApplication);
-    } else {
+  // Info provided on click of a crime pin (YYYY-MM-DD HH:MM:SS.sss - Location)
+  String _crimeSnippet(CrimeIncident c) {
+    final when = c.occurredAt.toLocal().toString();
+    final where = c.address ?? '${c.position.latitude.toStringAsFixed(4)}, ${c.position.longitude.toStringAsFixed(4)}';
+    return '$when - $where';
+  }
+
+  // Show bottom modal listing returned crimes
+  void _showCrimesListSheet() {
+    if (_lastCrimes.isEmpty) return; // return if theres no crimes
+
+    showModalBottomSheet(
+      context: context,
+      builder: (ctx) => ListView.builder(
+        itemCount: _lastCrimes.length,
+        itemBuilder: (_, i) {
+          final c = _lastCrimes[i];
+          // for each crime, calculate distance
+          final dist = _calculateDistanceMeters(_currentPosition!, c.position.latitude, c.position.longitude).round();
+          // each crime returns a ListTile with basic icon, 
+          //the offense in question, address, and distance
+          return ListTile(
+            leading: const Icon(Icons.report),
+            title: Text(c.offense),
+            subtitle: Text('${c.occurredAt.toLocal()} - ${c.address ?? 'Unknown address'} - ${dist}m'),
+            // code reused from POI logic, allow the user to navigate to a incident scene
+            trailing: IconButton(
+              icon: const Icon(Icons.navigation),
+              onPressed: () => _launchNavigation(c.position.latitude, c.position.longitude),
+            ),
+            // on tap of a list object, move the camera to it's coordinates, close modal
+            onTap: () async {
+              final controller = await _mapController.future;
+              controller.animateCamera(CameraUpdate.newLatLngZoom(c.position, 15));
+              Navigator.pop(context);
+            },
+          );
+        },
+      ),
+    );
+  }
+
+  // Long press handler 
+  void _onMapLongPress(LatLng pos) {
+    showModalBottomSheet(
+      context: context,
+      showDragHandle: true,
+      builder: (_) => SafeArea(
+        child: Wrap(
+          children: [
+            // On click of 'save location', call _savePinnedLocation for the area
+            ListTile(
+              leading: const Icon(Icons.bookmark_add_outlined),
+              title: const Text('Save location'),
+              onTap: () {
+                Navigator.pop(context); // close menu
+                _handleLongPressPin(pos);
+              },
+            ),
+            // On click of 'view crimes' call Crime radius selector function
+            // crime viewer handled in _showCrimeRadiusSheet
+            ListTile(
+              leading: const Icon(Icons.shield_outlined),
+              title: const Text('View recent crimes here'),
+              onTap: () async {
+                Navigator.pop(context); // close menu
+                setState(() => isFollowingUser = false);
+                await _cameraTo(pos);
+
+                // set the center coord to held position
+                _crimeCenter = pos;
+                setState(() {});
+                // show the draggable radius sheet
+                _showCrimeRadiusSheet();
+              },),
+              const Divider(height: 0),
+              ListTile(
+                leading: const Icon(Icons.close),
+                title: const Text('Cancel'),
+                onTap: () => Navigator.pop(context),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+  // Fetch incidents using source service, display a marker for each result.
+  Future<void> _loadCrimesAt({
+    // fields necessary for api call
+    required LatLng center,
+    required double radiusMeters,
+    required int daysAgo,
+    }) async {
+      // fetch incidents meeting needs via crime source service
+    try {
+      final incidents = await _crimeSource.fetchIncidents(
+        center: center,
+        radiusMeters: radiusMeters,
+        daysAgo: daysAgo,
+      );
+      // Clear old crime markers
+      markers.removeWhere((id, _) => id.value.startsWith(_crimePrefix));
+
+      // if there are no incidents, show a snackbar
+      if (incidents.isEmpty) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('No recent incidents in this area.')),
+          );
+        }
+        setState(() {}); // reflect cleared markers
+        return;
+      }
+
+      _lastCrimes = incidents; // so the list sheet can show them
+      for (final c in incidents) {
+        // for all incidents, classify based on offense title
+        // classification handled in crime_severity.dart
+        final sev = classifySeverity(c.offense);
+        final id = MarkerId('$_crimePrefix${c.id}');
+        // place a marker for each crime
+        markers[id] = Marker(
+          markerId: id,
+          position: c.position,
+          icon: BitmapDescriptor.defaultMarkerWithHue(sev.hue),
+          infoWindow: InfoWindow(
+            title: '${c.offense} (${sev.label})',
+            snippet: _crimeSnippet(c),
+          ),
+        );
+      }
+
+      setState(() {}); // draw the map with the new markers
+      _showCrimesListSheet(); // show the list of crimes
+
+    } catch (e) { // if theres an error, snackbar for no load
+      debugPrint('Crime load error: $e');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Could not launch Google Maps.')),
+          const SnackBar(content: Text('Could not load crime data for this area.')),
         );
       }
     }
   }
-}
+
+  // Open a drag bar for radius
+  // Repurposes code from POI radius slider
+  void _showCrimeRadiusSheet() {
+    // Bottom sheet
+    showModalBottomSheet(
+      context: context,
+      showDragHandle: true,
+      builder: (ctx) {
+        // Local setState for the sheet’s own UI
+        return StatefulBuilder(
+          builder: (ctx, setLocal) {
+            return Padding(
+              // box to hold slider bar for radius
+              padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // Sheet title and current radius value displayed here
+                  Row(
+                    children: [
+                      const Text('Crime radius (m)', style: TextStyle(fontWeight: FontWeight.bold)),
+                      const Spacer(),
+                      Text('${_crimeRadius.round()} m'),
+                    ],
+                  ),
+                  // Radius slider
+                  Slider(
+                    value: _crimeRadius,
+                    min: 100,
+                    max: 5000,
+                    divisions: 49,
+                    onChanged: (v) {
+                    setLocal(() => _crimeRadius = v);}, // update label live
+                    onChangeEnd: (v) async {
+                      Navigator.pop(ctx); // close the radius bar once it's been selected
+                      if (_crimeCenter != null) {
+                        await _loadCrimesAt(
+                          center: _crimeCenter!,
+                          radiusMeters: v,
+                          daysAgo: 30, // shows crimes within 30 day period
+                        );
+                      }
+                    },
+                  ),
+                  const SizedBox(height: 8), 
+                  Align(
+                    alignment: Alignment.centerRight,
+                    child: TextButton.icon( // close button
+                      icon: const Icon(Icons.close),
+                      label: const Text('Close'), 
+                      onPressed: () => Navigator.pop(ctx), // close the modal on click of 'close'
+                    ),
+                  ),
+                ],
+              ),
+            );
+          },
+        );
+      },
+    ).whenComplete(() { //runs on close of the radius bar, cleans up.
+    });
+  }
+
+    // calculate distance using Haversine formula 
+    double _calculateDistanceMeters(
+        LatLng from, double lat2, double lng2) {
+      const R = 6371000;
+      final dLat = (lat2 - from.latitude) * (pi / 180);
+      final dLng = (lng2 - from.longitude) * (pi / 180);
+      final a = 0.5 -
+          cos(dLat) / 2 +
+          cos(from.latitude * pi / 180) *
+              cos(lat2 * pi / 180) *
+              (1 - cos(dLng)) / 2;
+      return R * 2 * asin(sqrt(a));
+    }
+
+    // open Google Maps with selected coordinates
+    Future<void> _launchNavigation(double lat, double lng) async {
+      final uri = Uri.parse(
+          'https://www.google.com/maps/dir/?api=1&destination=$lat,$lng&travelmode=driving');
+      if (await canLaunchUrl(uri)) {
+        await launchUrl(uri, mode: LaunchMode.externalApplication);
+      } else {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Could not launch Google Maps.')),
+          );
+        }
+      }
+    }
+  }
