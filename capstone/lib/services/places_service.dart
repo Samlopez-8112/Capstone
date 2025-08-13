@@ -111,7 +111,7 @@ class PlaceApiProvider {
       '/maps/api/place/details/json',
       {
         'place_id': placeId,
-        'fields': 'name,formatted_address,formatted_phone_number,website,rating,photos',
+        'fields': 'name,formatted_address,formatted_phone_number,website,rating,photos,geometry',
         'key': apiKey,
       },
     );
@@ -137,6 +137,83 @@ class PlaceApiProvider {
       throw Exception('Failed to retrieve place details');
     }
   }
+
+  // Method version of finding place nearest - necessary to display info on precise locations
+  Future<Map<String, dynamic>?> fetchNearestPlaceBasic(
+    LatLng pos, {
+    int radius = 80, // meters
+  }) async {
+    final url = Uri.https(
+      'maps.googleapis.com',
+      '/maps/api/place/nearbysearch/json',
+      {
+        'location': '${pos.latitude},${pos.longitude}',
+        'radius': radius.toString(),
+        'key': apiKey,
+      },
+    );
+
+    final resp = await client.get(url);
+    if (resp.statusCode != 200) {
+      throw Exception('Nearest place lookup failed: ${resp.statusCode} ${resp.body}');
+    }
+    final data = jsonDecode(resp.body) as Map<String, dynamic>;
+    final results = (data['results'] as List?) ?? const [];
+    if (results.isEmpty) return null;
+    return results.first as Map<String, dynamic>;
+  }
+
+  /// convert Latlng to place details
+  Future<Map<String, dynamic>?> fetchDetailsForLatLng(
+    LatLng pos, {
+    int searchRadius = 80,
+  }) async {
+    final basic = await fetchNearestPlaceBasic(pos, radius: searchRadius);
+    if (basic == null) return null;
+
+    final placeId = basic['place_id'] as String?;
+    if (placeId == null) return null;
+
+    final details = await fetchPlaceDetails(placeId);
+
+    // Enrich details with any fields Nearby has but Details might not:
+    details['vicinity'] ??= basic['vicinity'];
+    details['geometry'] ??= basic['geometry']; // Nearby includes geometry.location
+
+    return details;
+  }
+ 
+ //find nearest 'business' establishment 
+Future<Map<String, dynamic>?> fetchNearestEstablishmentDetails(LatLng pos) async {
+  final nearby = Uri.https(
+    'maps.googleapis.com',
+    '/maps/api/place/nearbysearch/json',
+    {
+      'location': '${pos.latitude},${pos.longitude}',
+      'rankby': 'distance',
+      'type': 'establishment', // prefer businesses over localities
+      'key': apiKey,
+    },
+  );
+
+  final r = await client.get(nearby);
+  if (r.statusCode != 200) {
+    throw Exception('Nearby (establishment) failed: ${r.statusCode} ${r.body}');
+  }
+  final data = jsonDecode(r.body) as Map<String, dynamic>;
+  final results = (data['results'] as List?) ?? const [];
+  if (results.isEmpty) return null;
+
+  final first = results.first as Map<String, dynamic>;
+  final placeId = first['place_id'] as String?;
+  if (placeId == null) return null;
+
+  final details = await fetchPlaceDetails(placeId);
+  // Attach geometry from nearby if details didn’t include it
+  details['geometry'] ??= first['geometry'];
+  return details;
+}
+
 }
 
 /// ============== Nearby Places Section ==============

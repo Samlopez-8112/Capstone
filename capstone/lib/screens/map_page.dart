@@ -143,6 +143,7 @@ class _MapPageState extends State<MapPage> {
                           position: coords,
                           icon: BitmapDescriptor.defaultMarkerWithHue(
                               BitmapDescriptor.hueCyan),
+                              onTap: () => _openDetailsForLatLng(coords),
                           infoWindow:
                               const InfoWindow(title: "Searched Location"),
                         );
@@ -157,6 +158,7 @@ class _MapPageState extends State<MapPage> {
                         final points = await getPolylinePoints();
                         generatePolyline(points);
                       }
+                      await _openDetailsForLatLng(coords);
                     },
                   ),
                 ),
@@ -1206,6 +1208,7 @@ class _MapPageState extends State<MapPage> {
     ).whenComplete(() { //runs on close of the radius bar, cleans up.
     });
   }
+  
 
     // calculate distance using Haversine formula 
     double _calculateDistanceMeters(
@@ -1235,4 +1238,328 @@ class _MapPageState extends State<MapPage> {
         }
       }
     }
+    //
+Future<void> _openDetailsForLatLng(LatLng pos) async {
+  try {
+    final details = await PlaceApiProvider().fetchNearestEstablishmentDetails(pos);
+    if (!mounted) return;
+    _showPlaceCrimeSheet(center: pos, details: details);
+
+    if (details != null) {
+      // Reuse your existing POI bottom sheet (already renders
+      // address, phone, website, rating, and a Navigate button).
+    } else {
+      // Nothing business-like nearby; show a simple fallback.
+      _showBasicLocationSheet(pos);
+    }
+  } catch (e) {
+    if (!mounted) return;
+    _showBasicLocationSheet(pos);
+  }
+}
+
+// Fallback sheet for raw coordinates (no business found).
+void _showBasicLocationSheet(LatLng pos) {
+  final from = _currentPosition ?? pos;
+  final distM = _calculateDistanceMeters(from, pos.latitude, pos.longitude).round();
+  final label = '${pos.latitude.toStringAsFixed(5)}, ${pos.longitude.toStringAsFixed(5)}';
+
+  showModalBottomSheet(
+    context: context,
+    showDragHandle: true,
+    builder: (_) => Padding(
+      padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(children: [
+            const Icon(Icons.place),
+            const SizedBox(width: 8),
+            Text('Selected location', style: Theme.of(context).textTheme.titleMedium),
+          ]),
+          const SizedBox(height: 8),
+          Text(label, style: Theme.of(context).textTheme.bodyMedium),
+          const SizedBox(height: 6),
+          Text('~${distM}m away', style: Theme.of(context).textTheme.bodySmall?.copyWith(color: Colors.grey[700])),
+          const SizedBox(height: 12),
+          Wrap(
+            spacing: 8, runSpacing: 8,
+            children: [
+              ElevatedButton.icon(
+                icon: const Icon(Icons.bookmark_add_outlined),
+                label: const Text('Save'),
+                onPressed: () async {
+                  Navigator.pop(context);
+                  await _handleLongPressPin(pos);
+                },
+              ),
+              ElevatedButton.icon(
+                icon: const Icon(Icons.shield_outlined),
+                label: const Text('View crimes'),
+                onPressed: () async {
+                  Navigator.pop(context);
+                  setState(() => isFollowingUser = false);
+                  _crimeCenter = pos;
+                  await _cameraTo(pos);
+                  _showCrimeRadiusSheet();
+                },
+              ),
+              OutlinedButton.icon(
+                icon: const Icon(Icons.navigation),
+                label: const Text('Navigate'),
+                onPressed: () {
+                  Navigator.pop(context);
+                  _launchNavigation(pos.latitude, pos.longitude);
+                },
+              ),
+            ],
+          ),
+        ],
+      ),
+    ),
+  );
+}
+
+void _showPlaceCrimeSheet({
+  required LatLng center,
+  required Map<String, dynamic>? details,
+}) {
+  showModalBottomSheet(
+    context: context,
+    isScrollControlled: true,      // allows a taller sheet
+    showDragHandle: true,
+    builder: (_) {
+      final height = MediaQuery.of(context).size.height * 0.55;
+      return DefaultTabController(
+        length: 2,
+        child: SizedBox(
+          height: height,
+          child: Column(
+            children: [
+              const TabBar(
+                tabs: [
+                  Tab(text: 'Place'),
+                  Tab(text: 'Crime'),
+                ],
+              ),
+              Expanded(
+                child: TabBarView(
+                  children: [
+                    _buildPlaceDetailsView(center, details),
+                    _buildCrimeSummaryView(center),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    },
+  );
+}
+Widget _buildPlaceDetailsView(LatLng fallbackPos, Map<String, dynamic>? d) {
+  final name    = d?['name'] as String? ?? 'Selected location';
+  final address = d?['formatted_address'] as String?
+      ?? '${fallbackPos.latitude.toStringAsFixed(5)}, ${fallbackPos.longitude.toStringAsFixed(5)}';
+  final phone   = d?['formatted_phone_number'] as String?;
+  final website = d?['website'] as String?;
+  final rating  = (d?['rating'] is num) ? (d!['rating'] as num).toDouble() : null;
+
+  final lat = (d?['geometry']?['location']?['lat'] as num?)?.toDouble() ?? fallbackPos.latitude;
+  final lng = (d?['geometry']?['location']?['lng'] as num?)?.toDouble() ?? fallbackPos.longitude;
+  final pos = LatLng(lat, lng);
+
+  final from = _currentPosition ?? pos;
+  final distM = _calculateDistanceMeters(from, pos.latitude, pos.longitude).round();
+
+  return Padding(
+    padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
+    child: ListView(
+      children: [
+        Row(
+          children: [
+            const Icon(Icons.place),
+            const SizedBox(width: 8),
+            Expanded(child: Text(name, style: Theme.of(context).textTheme.titleMedium)),
+            if (rating != null) ...[
+              const Icon(Icons.star, size: 18, color: Colors.amber),
+              const SizedBox(width: 4),
+              Text(rating.toStringAsFixed(1)),
+            ],
+          ],
+        ),
+        const SizedBox(height: 8),
+        Text(address, style: Theme.of(context).textTheme.bodyMedium),
+        const SizedBox(height: 6),
+        Text(
+          'LatLng: ${pos.latitude.toStringAsFixed(5)}, ${pos.longitude.toStringAsFixed(5)} • ${distM}m away',
+          style: Theme.of(context).textTheme.bodySmall?.copyWith(color: Colors.grey[700]),
+        ),
+        if (phone != null || website != null) ...[
+          const SizedBox(height: 12),
+          if (phone != null)
+            ListTile(
+              dense: true,
+              contentPadding: EdgeInsets.zero,
+              leading: const Icon(Icons.phone),
+              title: Text(phone),
+              onTap: () => launchUrl(Uri.parse('tel:$phone')),
+            ),
+          if (website != null)
+            ListTile(
+              dense: true,
+              contentPadding: EdgeInsets.zero,
+              leading: const Icon(Icons.public),
+              title: Text(website, maxLines: 1, overflow: TextOverflow.ellipsis),
+              onTap: () => launchUrl(Uri.parse(website), mode: LaunchMode.externalApplication),
+            ),
+        ],
+        const SizedBox(height: 12),
+        Wrap(
+          spacing: 8, runSpacing: 8,
+          children: [
+            ElevatedButton.icon(
+              icon: const Icon(Icons.bookmark_add_outlined),
+              label: const Text('Save'),
+              onPressed: () async {
+                Navigator.pop(context);
+                await _handleLongPressPin(pos);
+              },
+            ),
+            ElevatedButton.icon(
+              icon: const Icon(Icons.shield_outlined),
+              label: const Text('View crimes'),
+              onPressed: () async {
+                Navigator.pop(context);
+                setState(() => isFollowingUser = false);
+                _crimeCenter = pos;
+                await _cameraTo(pos);
+                _showCrimeRadiusSheet();
+              },
+            ),
+          ],
+        ),
+      ],
+    ),
+  );
+}
+Widget _buildCrimeSummaryView(LatLng center) {
+  final radius = _crimeRadius; // use current slider default/value
+  const days = 30;
+
+  return FutureBuilder<List<CrimeIncident>>(
+    future: _crimeSource.fetchIncidents(
+      center: center,
+      radiusMeters: radius,
+      daysAgo: days,
+    ),
+    builder: (context, snap) {
+      if (snap.connectionState == ConnectionState.waiting) {
+        return const Center(child: CircularProgressIndicator());
+      }
+      if (snap.hasError) {
+        return Center(child: Text('Could not load crime data.'));
+      }
+      final crimes = snap.data ?? const <CrimeIncident>[];
+      if (crimes.isEmpty) {
+        return Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('No incidents found',
+                  style: Theme.of(context).textTheme.titleMedium),
+              const SizedBox(height: 8),
+              Text('Within ${(radius / 1609.34).toStringAsFixed(2)} mi • last $days days',
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(color: Colors.grey[700])),
+              const SizedBox(height: 12),
+              Align(
+                alignment: Alignment.centerLeft,
+                child: OutlinedButton.icon(
+                  icon: const Icon(Icons.tune),
+                  label: const Text('Change radius'),
+                  onPressed: () {
+                    Navigator.pop(context);
+                    _crimeCenter = center;
+                    _showCrimeRadiusSheet();
+                  },
+                ),
+              ),
+            ],
+          ),
+        );
+      }
+
+      // Count by offense
+      final Map<String, int> byType = {};
+      for (final c in crimes) {
+        final key = (c.offense.isNotEmpty ? c.offense : 'Unknown').trim();
+        byType[key] = (byType[key] ?? 0) + 1;
+      }
+      final entries = byType.entries.toList()
+        ..sort((a, b) => b.value.compareTo(a.value)); // desc by count
+
+      return Padding(
+        padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('${crimes.length} incidents',
+                style: Theme.of(context).textTheme.titleMedium),
+            const SizedBox(height: 6),
+            Text(
+              'Within ${(radius / 1609.34).toStringAsFixed(2)} mi • last $days days',
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(color: Colors.grey[700]),
+            ),
+            const SizedBox(height: 12),
+
+            // Breakdown list
+            Expanded(
+              child: ListView.separated(
+                itemCount: entries.length,
+                separatorBuilder: (_, __) => const Divider(height: 0),
+                itemBuilder: (_, i) {
+                  final e = entries[i];
+                  return ListTile(
+                    dense: true,
+                    leading: const Icon(Icons.report),
+                    title: Text(e.key),
+                    trailing: Text(e.value.toString()),
+                  );
+                },
+              ),
+            ),
+
+            // Actions
+            Row(
+              children: [
+                OutlinedButton.icon(
+                  icon: const Icon(Icons.tune),
+                  label: const Text('Change radius'),
+                  onPressed: () {
+                    Navigator.pop(context);
+                    _crimeCenter = center;
+                    _showCrimeRadiusSheet();
+                  },
+                ),
+                const SizedBox(width: 8),
+                ElevatedButton.icon(
+                  icon: const Icon(Icons.list),
+                  label: const Text('View list'),
+                  onPressed: () {
+                    // Reuse your existing list sheet
+                    _lastCrimes = crimes;
+                    Navigator.pop(context);
+                    _showCrimesListSheet();
+                  },
+                ),
+              ],
+            ),
+          ],
+        ),
+      );
+    },
+  );
+}
   }
