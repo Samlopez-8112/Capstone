@@ -103,17 +103,17 @@ class _MapPageState extends State<MapPage> {
                   onTap: _onMapTap,
                 ),
 
-              // Search bar at the top; instantiation of autocomplete_search_bar.dart
-              Positioned(
-                top: 50,
-                left: 15,
-                right: 15,
-                child: AutocompleteSearchBar(
-                  onSuggestionSelected: (LatLng coords) async {// following code is run on the click of a searched location
-                    final controller = await _mapController.future;
-                    setState(() {
-                      isFollowingUser = false; // stop camera from following user on search
-                      _destination = coords;
+                // Search bar at the top
+                Positioned(
+                  top: 50,
+                  left: 15,
+                  right: 15,
+                  child: AutocompleteSearchBar(
+                    onSuggestionSelected: (LatLng coords) async {
+                      final controller = await _mapController.future;
+                      setState(() {
+                        isFollowingUser = false;
+                        _destination = coords;
 
                         // remove previous search marker if it exists
                         if (_searchMarkerId != null) {
@@ -135,80 +135,93 @@ class _MapPageState extends State<MapPage> {
                         );
                       });
 
-                    // move camera to a searched location
-                    controller.animateCamera(
-                      CameraUpdate.newLatLngZoom(
-                        coords, 13));
-                    
-                    // If we already know the origin, update the route
-                    if (_origin != null && _destination != null) {
-                      final points = await getPolylinePoints();
-                      generatePolyline(points);
-                    }
-                  },
-                ),
-              ),
-              Positioned( // signout button
-                top: 110,
-                right: 15,
-                child: ElevatedButton(
-                  style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.white, foregroundColor: Colors.black, elevation: 4),
-                  onPressed: () => FirebaseAuth.instance.signOut(),
-                  child: const Icon(Icons.logout),
-                ),
-              ),
-              
-              if (_isDialOpen)
-              Positioned( // search radius bar 
-                bottom: 160,
-                left: 20,
-                right: 20,
-                child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-                  decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(12),
-                      boxShadow: [BoxShadow(blurRadius: 6, color: Colors.black26)]),
-                  child: Column(
-                    children: [
-                      const Text("Search Radius (m)", style: TextStyle(fontWeight: FontWeight.bold)),
-                      Slider(
-                        value: _searchRadius,
-                        min: 100,
-                        max: 5000,
-                        divisions: 49,
-                        label: '${_searchRadius.round()}m',
-                        onChanged: (value) => setState(() => _searchRadius = value),
-                      )
-                    ],
+                      controller.animateCamera(
+                        CameraUpdate.newLatLngZoom(coords, 13),
+                      );
+
+                      // If we already know the origin, update the route
+                      if (_origin != null && _destination != null) {
+                        final points = await getPolylinePoints();
+                        generatePolyline(points);
+                      }
+                    },
                   ),
                 ),
-              ),
-              Positioned( // speed dial search
-                bottom: 90,
-                left: 20,
-                child: SpeedDial(
-                  icon: Icons.place,
-                  activeIcon: Icons.close,
-                  backgroundColor: Colors.blueAccent,
-                  spacing: 12,
-                  onOpen: () => setState(() => _isDialOpen = true),// track whether the speed dial has been clicked
-                  onClose: () => setState(() => _isDialOpen = false), //initial click will open radius selection
-                  children: PoiCategory.values.map((cat) {
-                    return SpeedDialChild(
-                      child: Image.asset(cat.iconPath, height: 24),
-                      label: cat.label,
-                      onTap: () {
-                        setState(() {
-                          isFollowingUser = false;
-                       });
-                      _fetchCategoryPOIs(cat);
-                      }
-                    );
-                  }).toList(),
+
+                // Sign-out button
+                Positioned(
+                  top: 110,
+                  right: 15,
+                  child: ElevatedButton(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.white,
+                      foregroundColor: Colors.black,
+                      elevation: 4,
+                    ),
+                    onPressed: () => FirebaseAuth.instance.signOut(),
+                    child: const Icon(Icons.logout),
+                  ),
                 ),
-              ),
+
+                // Search radius slider (shown when speed dial is open)
+                if (_isDialOpen)
+                  Positioned(
+                    bottom: 160,
+                    left: 20,
+                    right: 20,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 16, vertical: 10),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(12),
+                        boxShadow: const [
+                          BoxShadow(blurRadius: 6, color: Colors.black26)
+                        ],
+                      ),
+                      child: Column(
+                        children: [
+                          const Text("Search Radius (m)",
+                              style: TextStyle(fontWeight: FontWeight.bold)),
+                          Slider(
+                            value: _searchRadius,
+                            min: 100,
+                            max: 5000,
+                            divisions: 49,
+                            label: '${_searchRadius.round()}m',
+                            onChanged: (value) =>
+                                setState(() => _searchRadius = value),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+
+                // Speed dial: nearby search by category
+                Positioned(
+                  bottom: 90,
+                  left: 20,
+                  child: SpeedDial(
+                    icon: Icons.place,
+                    activeIcon: Icons.close,
+                    backgroundColor: Colors.blueAccent,
+                    spacing: 12,
+                    onOpen: () => setState(() => _isDialOpen = true),
+                    onClose: () => setState(() => _isDialOpen = false),
+                    children: PoiCategory.values.map((cat) {
+                      return SpeedDialChild(
+                        child: Image.asset(cat.iconPath, height: 24),
+                        label: cat.label,
+                        onTap: () {
+                          setState(() {
+                            isFollowingUser = false;
+                          });
+                          _fetchCategoryPOIs(cat);
+                        },
+                      );
+                    }).toList(),
+                  ),
+                ),
 
                 // Toggle follow user + clear temp overlays
                 Positioned(
@@ -299,34 +312,35 @@ class _MapPageState extends State<MapPage> {
                   ),
                 ),
 
-              //Community rating
-              Positioned(
-                bottom: 150,
-                right: 20,
-                child: ElevatedButton.icon(
-                  icon: const Icon(Icons.shield_outlined),
-                  label: const Text("Rating"),
-                  onPressed: () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(builder: (context) => const RateAreaScreen()),
-                    );
-                  },
-                ),
-              ),
-
-              // cancel route button
-              if (_destination != null)
+                // Community Rating (CrowdSource) screen button
                 Positioned(
-                  top: 115,
-                  left: 15,
-                  child: FloatingActionButton(
-                    heroTag: "cancelRouteBtn",
-                    backgroundColor: Colors.red,
-                    onPressed: _cancelRoute,
-                    child: const Icon(Icons.close),
+                  bottom: 150,
+                  right: 20,
+                  child: ElevatedButton.icon(
+                    icon: const Icon(Icons.shield_outlined),
+                    label: const Text("Rating"),
+                    onPressed: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                            builder: (context) => const RateAreaScreen()),
+                      );
+                    },
                   ),
                 ),
+
+                // cancel route button
+                if (_destination != null)
+                  Positioned(
+                    top: 115,
+                    left: 15,
+                    child: FloatingActionButton(
+                      heroTag: "cancelRouteBtn",
+                      backgroundColor: Colors.red,
+                      onPressed: _cancelRoute,
+                      child: const Icon(Icons.close),
+                    ),
+                  ),
 
                 // Settings (gear)
                 Positioned(
@@ -632,23 +646,53 @@ class _MapPageState extends State<MapPage> {
     });
   }
 
-  Future<void> _handleLongPressPin(LatLng pos) async {
-    final user = FirebaseAuth.instance.currentUser;
-    if (user == null) return;
+  // POIs / Places 
 
-    await FirebaseFirestore.instance
-        .collection('users')
-        .doc(user.uid)
-        .collection('pinned_locations')
-        .add({
-      'lat': pos.latitude,
-      'lng': pos.longitude,
-      'timestamp': FieldValue.serverTimestamp(),
-      'isFavorite': false,
-    });
+  // Handle marker tap and fetch place details (full info: name, address, phone, website, rating)
+  Future<void> _handleMarkerTap(String placeId) async {
+    try {
+      final placeDetails = await PlaceApiProvider().fetchPlaceDetails(placeId);
+      _showPlaceDetailsBottomSheet(placeDetails);
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error fetching place details: $e')),
+      );
+    }
+  }
 
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Pinned location saved!')),
+  void _showPlaceDetailsBottomSheet(Map<String, dynamic> placeDetails) {
+    final lat = (placeDetails['geometry']?['location']?['lat'] as num?)?.toDouble();
+    final lng = (placeDetails['geometry']?['location']?['lng'] as num?)?.toDouble();
+
+    showModalBottomSheet(
+      context: context,
+      builder: (ctx) => Padding(
+        padding: const EdgeInsets.all(16.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              placeDetails['name'] ?? 'No name',
+              style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(height: 10),
+            Text('Address: ${placeDetails['formatted_address'] ?? 'No address'}'),
+            const SizedBox(height: 10),
+            Text('Phone: ${placeDetails['formatted_phone_number'] ?? 'No phone number'}'),
+            const SizedBox(height: 10),
+            Text('Website: ${placeDetails['website'] ?? 'No website'}'),
+            const SizedBox(height: 10),
+            Text('Rating: ${placeDetails['rating'] ?? 'No rating'}'),
+            const SizedBox(height: 10),
+            if (lat != null && lng != null)
+              ElevatedButton(
+                onPressed: () => _launchNavigation(lat, lng),
+                child: const Text('Navigate to this place'),
+              ),
+          ],
+        ),
+      ),
     );
   }
 
