@@ -1,15 +1,15 @@
 import 'dart:async';
 import 'dart:math';
 import 'package:capstone/screens/settings_screen.dart';
+import 'package:capstone/screens/CrowdSource_page.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_polyline_points/flutter_polyline_points.dart';
+import 'package:flutter_speed_dial/flutter_speed_dial.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:location/location.dart';
-import 'package:flutter_polyline_points/flutter_polyline_points.dart';
-import 'package:firebase_auth/firebase_auth.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:flutter_speed_dial/flutter_speed_dial.dart';
 import 'package:url_launcher/url_launcher.dart';
-import 'package:capstone/screens/CrowdSource_page.dart';
 import '../consts.dart';
 import '../models/poi_category.dart';
 import '../services/places_service.dart';
@@ -25,32 +25,37 @@ class MapPage extends StatefulWidget {
 class _MapPageState extends State<MapPage> {
   final Completer<GoogleMapController> _mapController = Completer();
   final Location _location = Location();
-  LatLng? _currentPosition; // user's current location
+
+  LatLng? _currentPosition; // user’s current location
   bool isFollowingUser = true;
   bool _isDialOpen = false;
 
-  Map<PolylineId, Polyline> polylines = {};
-  Map<MarkerId, Marker> markers = {};
+  // Map overlays
+  final Map<PolylineId, Polyline> polylines = {};
+  final Map<MarkerId, Marker> markers = {};
   MarkerId? _searchMarkerId;
 
+  // Nearby search state
   double _searchRadius = 2000;
-  List<Map<String, dynamic>> _lastFetchedPOIs = []; //id for temporary search markers
+  List<Map<String, dynamic>> _lastFetchedPOIs = [];
 
   static LatLng? _origin;
   static LatLng? _destination;
 
-  //Heatmap overlay
+  // Heatmap state 
   final Set<Circle> _heatCircles = {};
   bool _showHeatmap = true;
   Timer? _boundsDebounce;
   StreamSubscription<QuerySnapshot<Map<String, dynamic>>>? _ratingsSub;
-  //maps each circle to rating doc fields
+
+  // maps each circleId to rating doc fields for the details bottom sheet
   final Map<CircleId, Map<String, dynamic>> _circleMeta = {};
 
   @override
   void initState() {
     super.initState();
-    getLocationUpdates().then((_) {
+      _checkUserAuthentication();
+      getLocationUpdates().then((_) {
       getPolylinePoints().then(generatePolyline);
     });
     fixPinnedLocationData();
@@ -63,30 +68,40 @@ class _MapPageState extends State<MapPage> {
     super.dispose();
   }
 
+  void _checkUserAuthentication() {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Please log in to continue.')),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       body: _currentPosition == null
           ? const Center(child: CircularProgressIndicator())
-          : Stack(children: [
-              GoogleMap(
-                initialCameraPosition: CameraPosition(
-                  target: _currentPosition!,
-                  zoom: 13,
+          : Stack(
+              children: [
+                GoogleMap(
+                  initialCameraPosition: CameraPosition(
+                    target: _currentPosition!,
+                    zoom: 13,
+                  ),
+                  myLocationEnabled: true,
+                  markers: Set<Marker>.of(markers.values),
+                  polylines: Set<Polyline>.of(polylines.values),
+                  circles: _showHeatmap ? _heatCircles : {},
+                  onMapCreated: (controller) {
+                    _mapController.complete(controller);
+                    _scheduleBoundsRefresh();
+                  },
+                  onCameraMove: (_) => _scheduleBoundsRefresh(),
+                  onCameraIdle: _refreshHeatForViewport,
+                  onLongPress: _handleLongPressPin,
+                  onTap: _onMapTap,
                 ),
-                myLocationEnabled: true, // shows the user's location as a puck
-                markers: Set<Marker>.of(markers.values),
-                polylines: Set<Polyline>.of(polylines.values),
-                circles: _showHeatmap ? _heatCircles : {},
-                onMapCreated: (controller) { 
-                  _mapController.complete(controller);
-                  _scheduleBoundsRefresh();
-                },
-                onCameraMove: (_) => _scheduleBoundsRefresh(),
-                onCameraIdle: _refreshHeatForViewport,
-                onLongPress: _handleLongPressPin,
-                onTap: _onMapTap,
-              ),
 
               // Search bar at the top; instantiation of autocomplete_search_bar.dart
               Positioned(
@@ -100,21 +115,25 @@ class _MapPageState extends State<MapPage> {
                       isFollowingUser = false; // stop camera from following user on search
                       _destination = coords;
 
-                      // remove previous search marker if it exists
-                      if (_searchMarkerId != null) {
-                        markers.remove(_searchMarkerId);
-                      }
+                        // remove previous search marker if it exists
+                        if (_searchMarkerId != null) {
+                          markers.remove(_searchMarkerId);
+                        }
 
-                      final markerId = MarkerId("search_temp");
-                      _searchMarkerId = markerId; // create an id for a new search marker
+                        final markerId = const MarkerId("search_temp");
+                        _searchMarkerId = markerId;
 
-                      markers[markerId] = Marker( // on a search, place a marker at the searched location
-                        markerId: markerId,
-                        position: coords,
-                        icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueCyan),
-                        infoWindow: const InfoWindow(title: "Searched Location"),
-                      );
-                    });
+                        // NOTE: We do NOT call _handleMarkerTap here because we
+                        // don’t have a Places "place_id" for the free-form search coords
+                        markers[markerId] = Marker(
+                          markerId: markerId,
+                          position: coords,
+                          icon: BitmapDescriptor.defaultMarkerWithHue(
+                              BitmapDescriptor.hueCyan),
+                          infoWindow:
+                              const InfoWindow(title: "Searched Location"),
+                        );
+                      });
 
                     // move camera to a searched location
                     controller.animateCamera(
@@ -191,84 +210,94 @@ class _MapPageState extends State<MapPage> {
                 ),
               ),
 
-              Positioned( // user track toggle
-                bottom: 90,
-                right: 20,
-                child: FloatingActionButton(
-                onPressed: () {
-                  setState(() {
-                    isFollowingUser = !isFollowingUser;
+                // Toggle follow user + clear temp overlays
+                Positioned(
+                  bottom: 90,
+                  right: 20,
+                  child: FloatingActionButton(
+                    onPressed: () {
+                      setState(() {
+                        isFollowingUser = !isFollowingUser;
 
-                    // Remove temporary search marker if it exists
-                    if (isFollowingUser && _searchMarkerId != null) {
-                      markers.remove(_searchMarkerId);
-                      _searchMarkerId = null;
-                    }
+                        // Remove temporary search marker if it exists
+                        if (isFollowingUser && _searchMarkerId != null) {
+                          markers.remove(_searchMarkerId);
+                          _searchMarkerId = null;
+                        }
 
-                    // Always remove POIs when returning to self
-                    if (isFollowingUser) {
-                      markers.removeWhere((key, marker) => key.value.startsWith('poi_'));
-                    }
-                 });
+                        // Always remove POIs when returning to self
+                        if (isFollowingUser) {
+                          markers.removeWhere((key, marker) =>
+                              key.value.startsWith('poi_'));
+                        }
+                      });
 
-                    if (isFollowingUser && _currentPosition != null) {
-                      _cameraTo(_currentPosition!);
-                    }
-                },
-
-                  child: Icon(isFollowingUser ? Icons.my_location : Icons.location_disabled),
+                      if (isFollowingUser && _currentPosition != null) {
+                        _cameraTo(_currentPosition!);
+                      }
+                    },
+                    child: Icon(isFollowingUser
+                        ? Icons.my_location
+                        : Icons.location_disabled),
+                  ),
                 ),
-              ),
 
-              //Heatmap toggle
-              Positioned(
-                bottom: 200,
-                right: 20,
-                child: FloatingActionButton(
-                  heroTag: 'heatToggle',
-                  mini: true,
-                  onPressed: () {
-                    setState(() => _showHeatmap = !_showHeatmap);
-                    if(_showHeatmap) {
-                      _scheduleBoundsRefresh();
-                    }else {
-                      _ratingsSub?.cancel();
-                      setState(() => _heatCircles.clear());
-                    }
-                  },
-                  child: Icon(
-                    _showHeatmap ? Icons.visibility : Icons.visibility_off),
+                // Heatmap toggle
+                Positioned(
+                  bottom: 200,
+                  right: 20,
+                  child: FloatingActionButton(
+                    heroTag: 'heatToggle',
+                    mini: true,
+                    onPressed: () {
+                      setState(() => _showHeatmap = !_showHeatmap);
+                      if (_showHeatmap) {
+                        _scheduleBoundsRefresh();
+                      } else {
+                        _ratingsSub?.cancel();
+                        setState(() => _heatCircles.clear());
+                      }
+                    },
+                    child: Icon(
+                        _showHeatmap ? Icons.visibility : Icons.visibility_off),
+                  ),
                 ),
-              ),
 
-              Positioned( // pinned locations
-                bottom: 20,
-                right: 20,
-                child: FloatingActionButton(
-                  onPressed: _showPinnedLocations,
-                  child: const Icon(Icons.bookmark),
+                // Pinned locations
+                Positioned(
+                  bottom: 20,
+                  right: 20,
+                  child: FloatingActionButton(
+                    onPressed: _showPinnedLocations,
+                    child: const Icon(Icons.bookmark),
+                  ),
                 ),
-              ),
 
-              Positioned( // friends tab
-                bottom: 20,
-                left: 20,
-                child: ElevatedButton(
-                  onPressed: () {
-                    Navigator.push(context, MaterialPageRoute(builder: (_) => const FriendScreen()));
-                  },
-                  child: const Text("Friends"),
+                // Friends
+                Positioned(
+                  bottom: 20,
+                  left: 20,
+                  child: ElevatedButton(
+                    onPressed: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                            builder: (_) => const FriendScreen()),
+                      );
+                    },
+                    child: const Text("Friends"),
+                  ),
                 ),
-              ),
 
-              Positioned( // show location-sharing friends
-                bottom: 160,
-                left: 20,
-                child: FloatingActionButton(
-                  onPressed: _showSharingFriends,
-                  child: const Icon(Icons.people),
+                // Show location-sharing friends
+                Positioned(
+                  bottom: 160,
+                  left: 20,
+                  child: FloatingActionButton(
+                    onPressed: _showSharingFriends,
+                    child: const Icon(Icons.people),
+                  ),
                 ),
-              ),
 
               //Community rating
               Positioned(
@@ -299,30 +328,43 @@ class _MapPageState extends State<MapPage> {
                   ),
                 ),
 
-              //Makes the button look like a gear and puts it in top left corner
-              IconButton(
-                icon: const Icon(Icons.settings),
-                onPressed: () {
-                  Navigator.push(context, MaterialPageRoute(builder: (_) => const SettingsScreen()));
-                },
-              )
-            ]),
+                // Settings (gear)
+                Positioned(
+                  top: 40,
+                  left: 10,
+                  child: IconButton(
+                    icon: const Icon(Icons.settings),
+                    onPressed: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                            builder: (_) => const SettingsScreen()),
+                      );
+                    },
+                  ),
+                ),
+              ],
+            ),
     );
   }
 
-  //Heatmap helpers for color/intensity, viewport streaming
-  void _scheduleBoundsRefresh(){
+  //Heatmap helpers (viewport streaming, color/intensity, details)
+
+  void _scheduleBoundsRefresh() {
     _boundsDebounce?.cancel();
-    _boundsDebounce = Timer(const Duration(milliseconds: 250), _refreshHeatForViewport);
+    _boundsDebounce =
+        Timer(const Duration(milliseconds: 250), _refreshHeatForViewport);
   }
 
   Future<void> _refreshHeatForViewport() async {
+    if (!_showHeatmap) return;
+
     final controller = await _mapController.future;
 
     LatLngBounds bounds;
-    try{
+    try {
       bounds = await controller.getVisibleRegion();
-    } catch(_) {
+    } catch (_) {
       return;
     }
 
@@ -331,113 +373,117 @@ class _MapPageState extends State<MapPage> {
     final east = max(bounds.northeast.longitude, bounds.southwest.longitude);
     final west = min(bounds.northeast.longitude, bounds.southwest.longitude);
 
+    _ratingsSub?.cancel();
     _ratingsSub = FirebaseFirestore.instance
-      .collectionGroup('ratings')
-      .where('center.lat', isGreaterThanOrEqualTo: south)
-      .where('center.lat', isLessThanOrEqualTo: north)
-      .orderBy('center.lat')
-      .limit(1500)// tune for expected density
-      .snapshots()
-      .listen((snap) {
-        final now = DateTime.now();
-        final Set<Circle> circles = {};
-        final Map<CircleId, Map<String, dynamic>> meta = {};
+        .collectionGroup('ratings')
+        .where('center.lat', isGreaterThanOrEqualTo: south)
+        .where('center.lat', isLessThanOrEqualTo: north)
+        .orderBy('center.lat')
+        .limit(1500)
+        .snapshots()
+        .listen((snap) {
+      final now = DateTime.now();
+      final Set<Circle> circles = {};
+      final Map<CircleId, Map<String, dynamic>> meta = {};
 
-        for(final doc in snap.docs) {
-          final d = doc.data();
-          final lat = (d['center']?['lat'] as num?)?.toDouble();
-          final lng = (d['center']?['lng'] as num?)?.toDouble();
-          final rating = (d['rating'] as num?)?.toDouble();
-          final radiusMi = (d['radiusMiles'] as num?)?.toDouble() ?? 0.5;
-          final ts = (d['timestamp'] as Timestamp?)?.toDate();
+      for (final doc in snap.docs) {
+        final d = doc.data();
+        final lat = (d['center']?['lat'] as num?)?.toDouble();
+        final lng = (d['center']?['lng'] as num?)?.toDouble();
+        final rating = (d['rating'] as num?)?.toDouble();
+        final radiusMi = (d['radiusMiles'] as num?)?.toDouble() ?? 0.5;
+        final ts = (d['timestamp'] as Timestamp?)?.toDate();
 
-          if(lat == null || lng == null || rating == null) continue;
+        if (lat == null || lng == null || rating == null) continue;
 
-          //client side logitude filter
-          if(lng < west || lng > east) continue;
+        // client-side longitude filter
+        if (lng < west || lng > east) continue;
 
-          //weight lower safety => higher intesity with time decay
-          final base = (5.0 - rating).clamp(0.0, 4.0); //5=safer
-          final ageDays = ts == null ? 0.0 : now.difference(ts).inHours / 24.0;
-          const halfLifeDays = 60.0; //tune: newer reports weigh more
-          final decay = pow(0.5, ageDays / halfLifeDays).toDouble(); //1..0
-          final intensity = (base * decay) / 4.0; // normalize 0..1
+        // weight lower safety => higher intensity with time decay
+        final base = (5.0 - rating).clamp(0.0, 4.0); // 5 = safer
+        final ageDays = ts == null ? 0.0 : now.difference(ts).inHours / 24.0;
+        const halfLifeDays = 60.0; // newer reports weigh more
+        final decay = pow(0.5, ageDays / halfLifeDays).toDouble(); // 1..0
+        final intensity = (base * decay) / 4.0; // normalize 0..1
 
-          if(intensity <= 0.02) continue;
+        if (intensity <= 0.02) continue;
 
-          //circle radius in meters (cap for pref/visuals)
-          final kernel = (radiusMi * 1609.34 * 0.35).clamp(80.0, 450.0);
-          final id = CircleId('${lat.toStringAsFixed(5)},${lng.toStringAsFixed(5)}_${doc.id}');
+        // circle radius in meters (cap for perf/visuals)
+        final kernel = (radiusMi * 1609.34 * 0.35).clamp(80.0, 450.0);
+        final id = CircleId(
+            '${lat.toStringAsFixed(5)},${lng.toStringAsFixed(5)}_${doc.id}');
 
-          circles.add(
-            Circle(
-              circleId: CircleId(
-                '${lat.toStringAsFixed(5)},${lng.toStringAsFixed(5)}_${doc.id}'),
-                center: LatLng(lat, lng),
-                radius: kernel,
-                strokeWidth: 0,
-                fillColor: _colorForIntensity(intensity),
-              ),
-            );
+        circles.add(
+          Circle(
+            circleId: id,
+            center: LatLng(lat, lng),
+            radius: kernel,
+            strokeWidth: 0,
+            fillColor: _colorForIntensity(intensity),
+          ),
+        );
 
-          meta[id] = {
-            'rating': rating,
-            'reasons': d['reasons'],
-            'personalExperienceDetail': d['personalExperienceDetail'],
-            'timestamp': ts,
-            'radiusMiles': radiusMi,
-            'center': {'lat': lat, 'lng': lng},
-          };
-        }
+        meta[id] = {
+          'rating': rating,
+          'reasons': d['reasons'],
+          'personalExperienceDetail': d['personalExperienceDetail'],
+          'timestamp': ts,
+          'radiusMiles': radiusMi,
+          'center': {'lat': lat, 'lng': lng},
+        };
+      }
 
-        setState(() {
-          _heatCircles
+      setState(() {
+        _heatCircles
           ..clear()
           ..addAll(circles);
-          _circleMeta
+        _circleMeta
           ..clear()
           ..addAll(meta);
-        });
-      }, onError: (e){
-        debugPrint('Heatmap stream error: $e');
       });
+    }, onError: (e) {
+      debugPrint('Heatmap stream error: $e');
+    });
   }
 
   Color _colorForIntensity(double t) {
     t = t.clamp(0.0, 1.0);
     Color lerp(Color a, Color b, double x) =>
-      Color.lerp(a, b, x.clamp(0, 1))!;
+        Color.lerp(a, b, x.clamp(0, 1))!;
 
-    // gradient green->yellow->red
+    // gradient green -> yellow -> red
     final Color col = t < 0.5
-      ? lerp(Colors.green.shade400, Colors.yellow.shade600, t / 0.5)
-      : lerp(Colors.yellow.shade600, Colors.red.shade800, (t - 0.5) / 0.5);
+        ? lerp(Colors.green.shade400, Colors.yellow.shade600, t / 0.5)
+        : lerp(Colors.yellow.shade600, Colors.red.shade800, (t - 0.5) / 0.5);
 
-    final alpha = (40 + (t * 120)).round(); //40..160 alpha
+    final alpha = (40 + (t * 120)).round(); // 40..160 alpha
     return col.withAlpha(alpha);
   }
 
   void _onMapTap(LatLng pos) {
-    if(!_showHeatmap || _heatCircles.isEmpty) return;
+    if (!_showHeatmap || _heatCircles.isEmpty) return;
 
-    //Find circles that contain the tap (distance is radius)
+    // find circles that contain the tap (distance is radius)
     final matches = _heatCircles.where((c) {
-      final d = _calculateDistanceMeters(pos, c.center.latitude, c.center.longitude);
+      final d =
+          _calculateDistanceMeters(pos, c.center.latitude, c.center.longitude);
       return d <= c.radius;
     }).toList();
 
-    if(matches.isEmpty) return;
+    if (matches.isEmpty) return;
 
-    //Prefer the closest center to the tap
-    matches.sort((a,b ) {
-      final da = _calculateDistanceMeters(pos, a.center.latitude, a.center.longitude);
-      final db = _calculateDistanceMeters(pos, b.center.latitude, b.center.longitude);
+    // prefer the closest center to the tap
+    matches.sort((a, b) {
+      final da = _calculateDistanceMeters(
+          pos, a.center.latitude, a.center.longitude);
+      final db = _calculateDistanceMeters(
+          pos, b.center.latitude, b.center.longitude);
       return da.compareTo(db);
     });
 
     final CircleId id = matches.first.circleId;
     final data = _circleMeta[id];
-    if(data != null) _showRatingDetailsSheet(data);
+    if (data != null) _showRatingDetailsSheet(data);
   }
 
   void _showRatingDetailsSheet(Map<String, dynamic> d) {
@@ -445,7 +491,9 @@ class _MapPageState extends State<MapPage> {
     final String? detail = (d['personalExperienceDetail'] as String?)?.trim();
     final double? rating = (d['rating'] as num?)?.toDouble();
     final double? radiusMi = (d['radiusMiles'] as num?)?.toDouble();
-    final DateTime? ts = d['timestamp'] is Timestamp ? (d['timestamp'] as Timestamp).toDate() : d['timestamp'] as DateTime?;
+    final DateTime? ts = d['timestamp'] is Timestamp
+        ? (d['timestamp'] as Timestamp).toDate()
+        : d['timestamp'] as DateTime?;
 
     showModalBottomSheet(
       context: context,
@@ -459,9 +507,10 @@ class _MapPageState extends State<MapPage> {
               Row(children: [
                 const Icon(Icons.shield_outlined),
                 const SizedBox(width: 8),
-                Text('Community rating', style: Theme.of(context).textTheme.titleMedium),
+                Text('Community rating',
+                    style: Theme.of(context).textTheme.titleMedium),
                 const Spacer(),
-                if(rating != null)
+                if (rating != null)
                   Row(children: [
                     const Icon(Icons.star, size: 18, color: Colors.amber),
                     const SizedBox(width: 4),
@@ -469,27 +518,34 @@ class _MapPageState extends State<MapPage> {
                   ]),
               ]),
               const SizedBox(height: 8),
-              if(radiusMi != null)
+              if (radiusMi != null)
                 Text('Reported radius: ${radiusMi.toStringAsFixed(2)} mi',
-                  style: Theme.of(context).textTheme.bodySmall),
-              if(ts != null)
+                    style: Theme.of(context).textTheme.bodySmall),
+              if (ts != null)
                 Text('Updated: ${ts.toLocal()}',
-                style: Theme.of(context).textTheme.bodySmall?.copyWith(color: Colors.grey[600])),
+                    style: Theme.of(context)
+                        .textTheme
+                        .bodySmall
+                        ?.copyWith(color: Colors.grey[600])),
 
               const SizedBox(height: 12),
               Text('Reasons', style: Theme.of(context).textTheme.labelLarge),
               const SizedBox(height: 8),
-              if(reasons.isEmpty)
+              if (reasons.isEmpty)
                 const Text('No reasons provided')
               else
                 Wrap(
-                  spacing: 8, runSpacing: 8,
-                  children: reasons.map<Widget>((r) => Chip(label: Text(r.toString()))).toList(),
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: reasons
+                      .map<Widget>((r) => Chip(label: Text(r.toString())))
+                      .toList(),
                 ),
-              
-              if(detail != null && detail.isNotEmpty) ...[
+
+              if (detail != null && detail.isNotEmpty) ...[
                 const SizedBox(height: 12),
-                Text('Personal experience', style: Theme.of(context).textTheme.labelLarge),
+                Text('Personal experience',
+                    style: Theme.of(context).textTheme.labelLarge),
                 const SizedBox(height: 6),
                 Container(
                   width: double.infinity,
@@ -504,9 +560,11 @@ class _MapPageState extends State<MapPage> {
             ],
           ),
         ),
-      )
+      ),
     );
   }
+
+  // Location / camera / polyline
 
   Future<void> getLocationUpdates() async {
     if (!await _location.serviceEnabled()) await _location.requestService();
@@ -528,7 +586,6 @@ class _MapPageState extends State<MapPage> {
     controller.animateCamera(CameraUpdate.newLatLngZoom(pos, 13));
   }
 
-  // makes the route between two points
   Future<List<LatLng>> getPolylinePoints() async {
     if (_currentPosition == null) {
       LocationData locationData = await _location.getLocation();
@@ -553,7 +610,7 @@ class _MapPageState extends State<MapPage> {
   }
 
   void generatePolyline(List<LatLng> coordinates) {
-    final id = PolylineId("poly");
+    final id = const PolylineId("poly");
     polylines[id] = Polyline(
       polylineId: id,
       color: Colors.blue,
@@ -607,17 +664,25 @@ class _MapPageState extends State<MapPage> {
 
       setState(() {
         _lastFetchedPOIs = results;
-        markers.removeWhere((key, marker) => key.value.startsWith('poi_'));
+        markers.removeWhere(
+            (key, marker) => key.value.startsWith('poi_'));
+
         for (final poi in results) {
-          final lat = poi['geometry']['location']['lat'];
-          final lng = poi['geometry']['location']['lng'];
-          final markerId = MarkerId('poi_${poi['place_id'] ?? '$lat$lng'}');
+          final lat = (poi['geometry']?['location']?['lat'] as num?)?.toDouble();
+          final lng = (poi['geometry']?['location']?['lng'] as num?)?.toDouble();
+          if (lat == null || lng == null) continue;
+
+          final placeId = poi['place_id'] as String?;
+          final markerId = MarkerId('poi_${placeId ?? '${lat}_${lng}'}');
+
           markers[markerId] = Marker(
             markerId: markerId,
             position: LatLng(lat, lng),
+            // Only wire to place details if we have a real place_id
+            onTap: placeId == null ? null : () => _handleMarkerTap(placeId),
             infoWindow: InfoWindow(
-              title: poi['name'] ?? 'POI',
-              snippet: poi['vicinity'] ?? '',
+              title: poi['name']?.toString() ?? 'POI',
+              snippet: poi['vicinity']?.toString() ?? '',
               onTap: () => _launchNavigation(lat, lng),
             ),
           );
@@ -634,11 +699,12 @@ class _MapPageState extends State<MapPage> {
   }
 
   void _showPOIListSheet() {
-    final sorted = [..._lastFetchedPOIs]..sort((a, b) {
-        final aLat = a['geometry']['location']['lat'];
-        final aLng = a['geometry']['location']['lng'];
-        final bLat = b['geometry']['location']['lat'];
-        final bLng = b['geometry']['location']['lng'];
+    final sorted = [..._lastFetchedPOIs]
+      ..sort((a, b) {
+        final aLat = (a['geometry']?['location']?['lat'] as num?)?.toDouble() ?? 0;
+        final aLng = (a['geometry']?['location']?['lng'] as num?)?.toDouble() ?? 0;
+        final bLat = (b['geometry']?['location']?['lat'] as num?)?.toDouble() ?? 0;
+        final bLng = (b['geometry']?['location']?['lng'] as num?)?.toDouble() ?? 0;
         return _calculateDistanceMeters(_currentPosition!, aLat, aLng)
             .compareTo(_calculateDistanceMeters(_currentPosition!, bLat, bLng));
       });
@@ -649,19 +715,29 @@ class _MapPageState extends State<MapPage> {
         itemCount: sorted.length,
         itemBuilder: (_, i) {
           final poi = sorted[i];
-          final lat = poi['geometry']['location']['lat'];
-          final lng = poi['geometry']['location']['lng'];
+          final lat = (poi['geometry']?['location']?['lat'] as num?)?.toDouble();
+          final lng = (poi['geometry']?['location']?['lng'] as num?)?.toDouble();
+          final name = poi['name']?.toString() ?? 'Unknown';
+          final vicinity = poi['vicinity']?.toString() ?? 'No address';
+
           return ListTile(
             leading: const Icon(Icons.location_on),
-            title: Text(poi['name'] ?? 'Unknown'),
-            subtitle: Text('${poi['vicinity'] ?? 'No address'} • ${_calculateDistanceMeters(_currentPosition!, lat, lng).round()}m'),
-            trailing: IconButton(
-              icon: const Icon(Icons.navigation),
-              onPressed: () => _launchNavigation(lat, lng),
-            ),
+            title: Text(name),
+            subtitle: (lat != null && lng != null)
+                ? Text('$vicinity • ${_calculateDistanceMeters(_currentPosition!, lat, lng).round()}m')
+                : Text(vicinity),
+            trailing: (lat != null && lng != null)
+                ? IconButton(
+                    icon: const Icon(Icons.navigation),
+                    onPressed: () => _launchNavigation(lat, lng),
+                  )
+                : null,
             onTap: () async {
+              if (lat == null || lng == null) return;
               final controller = await _mapController.future;
-              controller.animateCamera(CameraUpdate.newLatLngZoom(LatLng(lat, lng), 15));
+              controller.animateCamera(
+                CameraUpdate.newLatLngZoom(LatLng(lat, lng), 15),
+              );
               Navigator.pop(context);
             },
           );
@@ -670,63 +746,68 @@ class _MapPageState extends State<MapPage> {
     );
   }
 
-  double _calculateDistanceMeters(LatLng from, double lat2, double lng2) {
-    const R = 6371000;
-    final dLat = (lat2 - from.latitude) * (pi / 180);
-    final dLng = (lng2 - from.longitude) * (pi / 180);
-    final a = 0.5 - cos(dLat) / 2 +
-        cos(from.latitude * pi / 180) *
-            cos(lat2 * pi / 180) *
-            (1 - cos(dLng)) / 2;
-    return R * 2 * asin(sqrt(a));
-  }
+  // Pinned / friends
 
-  Future<void> _launchNavigation(double lat, double lng) async {
-    final uri = Uri.parse('https://www.google.com/maps/dir/?api=1&destination=$lat,$lng&travelmode=driving');
-    if (await canLaunchUrl(uri)) {
-      await launchUrl(uri, mode: LaunchMode.externalApplication);
-    } else {
+  Future<void> _handleLongPressPin(LatLng pos) async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
+
+    try {
+      await FirebaseFirestore.instance
+          .collection('users')
+          .doc(user.uid)
+          .collection('pinned_locations')
+          .add({
+        'lat': pos.latitude,
+        'lng': pos.longitude,
+        'timestamp': FieldValue.serverTimestamp(),
+        'isFavorite': false,
+      });
+
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Could not launch Google Maps.')),
+        const SnackBar(content: Text('Pinned location saved!')),
+      );
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error saving pinned location: $e')),
       );
     }
   }
 
   Future<void> _showPinnedLocations() async {
-  final user = FirebaseAuth.instance.currentUser;
-  if (user == null) return;
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
 
-  final snapshot = await FirebaseFirestore.instance
-      .collection('users')
-      .doc(user.uid)
-      .collection('pinned_locations')
-      .orderBy('timestamp', descending: true)
-      .get();
+    final snapshot = await FirebaseFirestore.instance
+        .collection('users')
+        .doc(user.uid)
+        .collection('pinned_locations')
+        .orderBy('timestamp', descending: true)
+        .get();
 
-  final favs = snapshot.docs.where((doc) {
-    final data = doc.data();
-    return data.containsKey('isFavorite') && data['isFavorite'] == true;
-  });
+    final favs = snapshot.docs.where((doc) {
+      final data = doc.data();
+      return data.containsKey('isFavorite') && data['isFavorite'] == true;
+    });
 
-  final recents = snapshot.docs.where((doc) {
-    final data = doc.data();
-    return !data.containsKey('isFavorite') || data['isFavorite'] != true;
-  }).take(3);
+    final recents = snapshot.docs.where((doc) {
+      final data = doc.data();
+      return !data.containsKey('isFavorite') || data['isFavorite'] != true;
+    }).take(3);
 
-  showModalBottomSheet(
-    context: context,
-    builder: (_) => ListView(
-      children: [
-        const ListTile(title: Text('Favorites')),
-        ...favs.map((doc) => _buildPinTile(doc, user.uid)),
-        const Divider(),
-        const ListTile(title: Text('Recent Pins')),
-        ...recents.map((doc) => _buildPinTile(doc, user.uid)),
-      ],
-    ),
-  );
-}
-
+    showModalBottomSheet(
+      context: context,
+      builder: (_) => ListView(
+        children: [
+          const ListTile(title: Text('Favorites')),
+          ...favs.map((doc) => _buildPinTile(doc, user.uid)),
+          const Divider(),
+          const ListTile(title: Text('Recent Pins')),
+          ...recents.map((doc) => _buildPinTile(doc, user.uid)),
+        ],
+      ),
+    );
+  }
 
   Widget _buildPinTile(QueryDocumentSnapshot doc, String uid) {
     final lat = doc['lat'];
@@ -756,12 +837,29 @@ class _MapPageState extends State<MapPage> {
     );
   }
 
-    //help from chatgpt
+  Future<void> fixPinnedLocationData() async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
+
+    final snapshot = await FirebaseFirestore.instance
+        .collection('users')
+        .doc(user.uid)
+        .collection('pinned_locations')
+        .get();
+
+    for (final doc in snapshot.docs) {
+      final data = doc.data();
+      if (!data.containsKey('isFavorite')) {
+        await doc.reference.update({'isFavorite': false});
+      }
+    }
+  }
+
   Future<void> _showSharingFriends() async {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) return;
 
-  // find all users who are sharing with current user
+    // find all users who are sharing with current user
     final allUsers = await FirebaseFirestore.instance.collection('users').get();
     final sharedWithMe = <DocumentSnapshot>[];
 
@@ -785,7 +883,6 @@ class _MapPageState extends State<MapPage> {
       return;
     }
 
-    // help from chatgpt
     showModalBottomSheet(
       context: context,
       builder: (_) => ListView(
@@ -810,8 +907,8 @@ class _MapPageState extends State<MapPage> {
                 return;
               }
 
-              final lat = loc['lat'];
-              final lng = loc['lng'];
+              final lat = (loc['lat'] as num).toDouble();
+              final lng = (loc['lng'] as num).toDouble();
               final pos = LatLng(lat, lng);
               _cameraTo(pos);
 
@@ -821,7 +918,8 @@ class _MapPageState extends State<MapPage> {
                   markerId: id,
                   position: pos,
                   infoWindow: InfoWindow(title: displayName),
-                  icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueMagenta),
+                  icon: BitmapDescriptor.defaultMarkerWithHue(
+                      BitmapDescriptor.hueMagenta),
                 );
               });
 
@@ -834,23 +932,33 @@ class _MapPageState extends State<MapPage> {
       ),
     );
   }
-  
-  Future<void> fixPinnedLocationData() async {
-  final user = FirebaseAuth.instance.currentUser;
-  if (user == null) return;
 
-  final snapshot = await FirebaseFirestore.instance
-      .collection('users')
-      .doc(user.uid)
-      .collection('pinned_locations')
-      .get();
+  // Utilities
 
-  for (final doc in snapshot.docs) {
-    final data = doc.data();
-    if (!data.containsKey('isFavorite')) {
-      await doc.reference.update({'isFavorite': false});
+  double _calculateDistanceMeters(
+      LatLng from, double lat2, double lng2) {
+    const R = 6371000;
+    final dLat = (lat2 - from.latitude) * (pi / 180);
+    final dLng = (lng2 - from.longitude) * (pi / 180);
+    final a = 0.5 -
+        cos(dLat) / 2 +
+        cos(from.latitude * pi / 180) *
+            cos(lat2 * pi / 180) *
+            (1 - cos(dLng)) / 2;
+    return R * 2 * asin(sqrt(a));
+  }
+
+  Future<void> _launchNavigation(double lat, double lng) async {
+    final uri = Uri.parse(
+        'https://www.google.com/maps/dir/?api=1&destination=$lat,$lng&travelmode=driving');
+    if (await canLaunchUrl(uri)) {
+      await launchUrl(uri, mode: LaunchMode.externalApplication);
+    } else {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Could not launch Google Maps.')),
+        );
+      }
     }
   }
-}
-
 }
