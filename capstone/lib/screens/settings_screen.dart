@@ -16,6 +16,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   late TextEditingController _displayNameController;
   late TextEditingController _emailController;
   late TextEditingController _passwordController;
+  TextEditingController _phoneController = TextEditingController();
 
   bool _loading = false;
 
@@ -108,6 +109,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   return null;
                 },
               ),
+              TextFormField(
+                controller: _phoneController,
+                decoration: const InputDecoration(labelText: 'Phone Number (+1234567890)'),
+              ),
+              ElevatedButton.icon(
+                icon: const Icon(Icons.phone),
+                label: const Text('Link Phone for MFA'),
+                onPressed: _linkPhoneNumber,
+              ),
               const SizedBox(height: 24),
               ElevatedButton.icon(
                 icon: const Icon(Icons.save),
@@ -120,4 +130,65 @@ class _SettingsScreenState extends State<SettingsScreen> {
       ),
     );
   }
+  void _linkPhoneNumber() async {
+    final phone = _phoneController.text.trim();
+      if (phone.isEmpty) return;
+
+      await FirebaseAuth.instance.verifyPhoneNumber(
+        phoneNumber: phone,
+        verificationCompleted: (PhoneAuthCredential credential) async {
+          await FirebaseAuth.instance.currentUser?.linkWithCredential(credential);
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Phone number linked as MFA')),
+          );
+        },
+        verificationFailed: (e) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Verification failed: ${e.message}')),
+          );
+        },
+        codeSent: (verificationId, resendToken) async {
+          String? smsCode = await _askUserForSmsCode();
+          if (smsCode == null) return;
+
+          final credential = PhoneAuthProvider.credential(
+          verificationId: verificationId,
+          smsCode: smsCode,
+          );
+          await FirebaseAuth.instance.currentUser?.linkWithCredential(credential);
+
+          ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('MFA setup complete!')),
+          );
+        },
+        codeAutoRetrievalTimeout: (_) {},
+      );
+  }
+
+  Future<String?> _askUserForSmsCode() async {
+    String? smsCode;
+      await showDialog(
+      context: context,
+      builder: (context) {
+        final codeController = TextEditingController();
+        return AlertDialog(
+          title: const Text('Enter SMS Code'),
+          content: TextField(
+            controller: codeController,
+            keyboardType: TextInputType.number,
+          ),
+          actions: [
+          TextButton(
+            onPressed: () {
+              smsCode = codeController.text.trim();
+              Navigator.of(context).pop();
+            },
+            child: const Text('Submit'),
+          )
+        ],
+      );
+    },
+  );
+  return smsCode;
+}
 }
