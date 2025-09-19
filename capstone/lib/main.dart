@@ -34,6 +34,7 @@ Future<void> setup() async{
   MapboxOptions.setAccessToken(
     dotenv.env["MAPBOX_ACCESS_TOKEN"]!, // .env contains api tokens
     );
+  
 }
 
 class MyApp extends StatelessWidget {
