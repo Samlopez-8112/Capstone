@@ -3,7 +3,7 @@
     {
       "incident_id": "fixture-001",
       "incident_offense": "Robbery",
-      "incident_date": "2025-07-23T01:26:52Z",
+      "incident_date": "2025-09-23T01:26:52Z",
       "incident_address": "1608 Oak Ln, Winnsboro, LA",
       "incident_latitude": 32.162777,
       "incident_longitude": -91.718341
@@ -11,7 +11,7 @@
     {
       "incident_id": "fixture-002",
       "incident_offense": "Burglary",
-      "incident_date": "2025-07-26T21:36:22Z",
+      "incident_date": "2025-09-26T21:36:22Z",
       "incident_address": "576 Walnut Dr, Tallulah, LA",
       "incident_latitude": 32.414773,
       "incident_longitude": -91.184376
@@ -19,7 +19,7 @@
     {
       "incident_id": "fixture-003",
       "incident_offense": "Fraud",
-      "incident_date": "2025-07-26T23:42:22Z",
+      "incident_date": "2025-09-26T23:42:22Z",
       "incident_address": "1019 Jackson Blvd, Ruston, LA",
       "incident_latitude": 32.519762,
       "incident_longitude": -92.650809
@@ -27,7 +27,7 @@
     {
       "incident_id": "fixture-004",
       "incident_offense": "Assault",
-      "incident_date": "2025-07-26T17:43:59Z",
+      "incident_date": "2025-09-26T17:43:59Z",
       "incident_address": "1663 Cypress St, Ruston, LA",
       "incident_latitude": 32.517145,
       "incident_longitude": -92.626625
@@ -35,7 +35,7 @@
     {
       "incident_id": "fixture-005",
       "incident_offense": "Trespassing",
-      "incident_date": "2025-07-29T03:03:48Z",
+      "incident_date": "2025-09-29T03:03:48Z",
       "incident_address": "1752 Main Ln, Grambling, LA",
       "incident_latitude": 32.532824,
       "incident_longitude": -92.722143
@@ -43,15 +43,15 @@
     {
       "incident_id": "fixture-006",
       "incident_offense": "Disorderly Conduct",
-      "incident_date": "2025-07-30T12:27:06Z",
+      "incident_date": "2025-09-30T12:27:06Z",
       "incident_address": "1798 Jackson Blvd, Bastrop, LA",
       "incident_latitude": 32.771589,
-      "incident_longitude": -91.898707
+      "incident_longitude": -91.898709
     },
     {
-      "incident_id": "fixture-007",
+      "incident_id": "fixture-009",
       "incident_offense": "Robbery",
-      "incident_date": "2025-07-30T08:02:09Z",
+      "incident_date": "2025-09-30T08:02:09Z",
       "incident_address": "263 Maple St, Rayville, LA",
       "incident_latitude": 32.480857,
       "incident_longitude": -91.752188
@@ -67,7 +67,7 @@
     {
       "incident_id": "fixture-009",
       "incident_offense": "Arson",
-      "incident_date": "2025-07-28T04:05:59Z",
+      "incident_date": "2025-09-28T04:05:59Z",
       "incident_address": "434 Jefferson Rd, Shreveport, LA",
       "incident_latitude": 32.528537,
       "incident_longitude": -93.742876
@@ -75,7 +75,7 @@
     {
       "incident_id": "fixture-010",
       "incident_offense": "Theft",
-      "incident_date": "2025-07-27T09:44:05Z",
+      "incident_date": "2025-09-27T09:44:05Z",
       "incident_address": "1783 Main Blvd, Shreveport, LA",
       "incident_latitude": 32.531348,
       "incident_longitude": -93.761249
@@ -83,7 +83,7 @@
     {
       "incident_id": "fixture-011",
       "incident_offense": "Trespassing",
-      "incident_date": "2025-07-31T13:30:02Z",
+      "incident_date": "2025-09-31T13:30:02Z",
       "incident_address": "535 Jefferson Rd, Minden, LA",
       "incident_latitude": 32.619944,
       "incident_longitude": -93.289565
@@ -94,12 +94,12 @@
       "incident_date": "2025-08-12T12:54:56Z",
       "incident_address": "1203 Elm Ln, Winnsboro, LA",
       "incident_latitude": 32.169518,
-      "incident_longitude": -91.710735
+      "incident_longitude": -91.710935
     },
     {
       "incident_id": "fixture-013",
       "incident_offense": "Robbery",
-      "incident_date": "2025-07-23T00:02:33Z",
+      "incident_date": "2025-09-23T00:02:33Z",
       "incident_address": "1143 Jefferson St, Rayville, LA",
       "incident_latitude": 32.449374,
       "incident_longitude": -91.738101
@@ -115,7 +115,7 @@
     {
       "incident_id": "fixture-015",
       "incident_offense": "Theft",
-      "incident_date": "2025-07-21T20:20:12Z",
+      "incident_date": "2025-09-21T20:20:12Z",
       "incident_address": "1496 Walnut Blvd, Minden, LA",
       "incident_latitude": 32.634302,
       "incident_longitude": -93.290212
@@ -123,7 +123,7 @@
     {
       "incident_id": "fixture-016",
       "incident_offense": "Drug Violation",
-      "incident_date": "2025-07-16T10:39:19Z",
+      "incident_date": "2025-09-16T10:39:19Z",
       "incident_address": "1578 Elm Dr, Winnsboro, LA",
       "incident_latitude": 32.156113,
       "incident_longitude": -91.716465
@@ -139,7 +139,7 @@
     {
       "incident_id": "fixture-018",
       "incident_offense": "Disorderly Conduct",
-      "incident_date": "2025-07-16T07:32:26Z",
+      "incident_date": "2025-09-16T09:32:26Z",
       "incident_address": "1326 Cypress Rd, Bossier City, LA",
       "incident_latitude": 32.517672,
       "incident_longitude": -93.74366
@@ -147,7 +147,7 @@
     {
       "incident_id": "fixture-019",
       "incident_offense": "Vandalism",
-      "incident_date": "2025-07-27T21:51:23Z",
+      "incident_date": "2025-09-27T21:51:23Z",
       "incident_address": "218 Maple Dr, Ruston, LA",
       "incident_latitude": 32.529471,
       "incident_longitude": -92.644998
@@ -155,7 +155,7 @@
     {
       "incident_id": "fixture-020",
       "incident_offense": "Disorderly Conduct",
-      "incident_date": "2025-07-22T09:23:45Z",
+      "incident_date": "2025-09-22T09:23:45Z",
       "incident_address": "362 Jefferson Dr, Grambling, LA",
       "incident_latitude": 32.531101,
       "incident_longitude": -92.722352
@@ -179,7 +179,7 @@
     {
       "incident_id": "fixture-023",
       "incident_offense": "Robbery",
-      "incident_date": "2025-07-26T23:26:46Z",
+      "incident_date": "2025-09-26T23:26:46Z",
       "incident_address": "114 Oak Ln, West Monroe, LA",
       "incident_latitude": 32.514055,
       "incident_longitude": -92.150267
@@ -187,7 +187,7 @@
     {
       "incident_id": "fixture-024",
       "incident_offense": "Vehicle Theft",
-      "incident_date": "2025-07-19T17:25:45Z",
+      "incident_date": "2025-09-19T17:25:45Z",
       "incident_address": "1152 Maple Blvd, Winnsboro, LA",
       "incident_latitude": 32.166565,
       "incident_longitude": -91.722846
@@ -211,7 +211,7 @@
     {
       "incident_id": "fixture-027",
       "incident_offense": "Burglary",
-      "incident_date": "2025-07-28T08:34:48Z",
+      "incident_date": "2025-09-28T08:34:48Z",
       "incident_address": "492 Maple Dr, Ruston, LA",
       "incident_latitude": 32.522898,
       "incident_longitude": -92.640501
@@ -219,15 +219,15 @@
     {
       "incident_id": "fixture-028",
       "incident_offense": "Robbery",
-      "incident_date": "2025-07-19T22:42:15Z",
-      "incident_address": "1007 Walnut St, Bastrop, LA",
+      "incident_date": "2025-09-19T22:42:15Z",
+      "incident_address": "1009 Walnut St, Bastrop, LA",
       "incident_latitude": 32.776436,
       "incident_longitude": -91.895746
     },
     {
       "incident_id": "fixture-029",
       "incident_offense": "Robbery",
-      "incident_date": "2025-07-24T08:38:27Z",
+      "incident_date": "2025-09-24T08:38:27Z",
       "incident_address": "932 Jefferson Rd, Ruston, LA",
       "incident_latitude": 32.531122,
       "incident_longitude": -92.642586
@@ -251,9 +251,9 @@
     {
       "incident_id": "fixture-032",
       "incident_offense": "Assault",
-      "incident_date": "2025-07-19T01:08:38Z",
+      "incident_date": "2025-09-19T01:08:38Z",
       "incident_address": "1140 Oak Ave, Ruston, LA",
-      "incident_latitude": 32.534707,
+      "incident_latitude": 32.534709,
       "incident_longitude": -92.656028
     },
     {
@@ -267,7 +267,7 @@
     {
       "incident_id": "fixture-034",
       "incident_offense": "Disorderly Conduct",
-      "incident_date": "2025-07-31T15:28:19Z",
+      "incident_date": "2025-09-31T15:28:19Z",
       "incident_address": "634 Maple Ln, Ruston, LA",
       "incident_latitude": 32.518163,
       "incident_longitude": -92.641365
@@ -275,15 +275,15 @@
     {
       "incident_id": "fixture-035",
       "incident_offense": "DUI",
-      "incident_date": "2025-07-30T20:23:46Z",
+      "incident_date": "2025-09-30T20:23:46Z",
       "incident_address": "1036 Cypress St, Tallulah, LA",
       "incident_latitude": 32.399287,
-      "incident_longitude": -91.178077
+      "incident_longitude": -91.178097
     },
     {
       "incident_id": "fixture-036",
       "incident_offense": "Burglary",
-      "incident_date": "2025-07-19T20:13:45Z",
+      "incident_date": "2025-09-19T20:13:45Z",
       "incident_address": "1201 Maple Dr, Ruston, LA",
       "incident_latitude": 32.50358,
       "incident_longitude": -92.647621
@@ -294,7 +294,7 @@
       "incident_date": "2025-08-03T05:24:16Z",
       "incident_address": "683 Pine Rd, Shreveport, LA",
       "incident_latitude": 32.534748,
-      "incident_longitude": -93.76072
+      "incident_longitude": -93.76092
     },
     {
       "incident_id": "fixture-038",
@@ -307,7 +307,7 @@
     {
       "incident_id": "fixture-039",
       "incident_offense": "Burglary",
-      "incident_date": "2025-07-21T11:34:49Z",
+      "incident_date": "2025-09-21T11:34:49Z",
       "incident_address": "1620 Walnut Ave, Winnsboro, LA",
       "incident_latitude": 32.168792,
       "incident_longitude": -91.712308
@@ -315,7 +315,7 @@
     {
       "incident_id": "fixture-040",
       "incident_offense": "Robbery",
-      "incident_date": "2025-07-29T02:26:16Z",
+      "incident_date": "2025-09-29T02:26:16Z",
       "incident_address": "1135 Jefferson Blvd, Shreveport, LA",
       "incident_latitude": 32.521665,
       "incident_longitude": -93.770509
@@ -323,7 +323,7 @@
     {
       "incident_id": "fixture-041",
       "incident_offense": "Theft",
-      "incident_date": "2025-07-16T11:00:19Z",
+      "incident_date": "2025-09-16T11:00:19Z",
       "incident_address": "783 Pine Ln, Ruston, LA",
       "incident_latitude": 32.526625,
       "incident_longitude": -92.645361
@@ -355,7 +355,7 @@
     {
       "incident_id": "fixture-045",
       "incident_offense": "Fraud",
-      "incident_date": "2025-07-23T18:56:31Z",
+      "incident_date": "2025-09-23T18:56:31Z",
       "incident_address": "1995 Maple Ave, Grambling, LA",
       "incident_latitude": 32.542823,
       "incident_longitude": -92.729674
@@ -371,7 +371,7 @@
     {
       "incident_id": "fixture-047",
       "incident_offense": "Drug Violation",
-      "incident_date": "2025-07-27T02:01:42Z",
+      "incident_date": "2025-09-27T02:01:42Z",
       "incident_address": "508 Jefferson Blvd, Monroe, LA",
       "incident_latitude": 32.514698,
       "incident_longitude": -92.116711
@@ -387,7 +387,7 @@
     {
       "incident_id": "fixture-049",
       "incident_offense": "Vehicle Theft",
-      "incident_date": "2025-07-17T15:01:53Z",
+      "incident_date": "2025-09-17T15:01:53Z",
       "incident_address": "336 Elm Ave, Bossier City, LA",
       "incident_latitude": 32.528244,
       "incident_longitude": -93.754041
@@ -395,7 +395,7 @@
     {
       "incident_id": "fixture-050",
       "incident_offense": "Vehicle Theft",
-      "incident_date": "2025-07-31T12:20:06Z",
+      "incident_date": "2025-09-31T12:20:06Z",
       "incident_address": "993 Jackson Dr, Rayville, LA",
       "incident_latitude": 32.466387,
       "incident_longitude": -91.758972
@@ -411,7 +411,7 @@
     {
       "incident_id": "fixture-052",
       "incident_offense": "DUI",
-      "incident_date": "2025-08-01T07:35:07Z",
+      "incident_date": "2025-08-01T09:35:09Z",
       "incident_address": "1376 Cypress Ln, Winnsboro, LA",
       "incident_latitude": 32.170367,
       "incident_longitude": -91.715906
@@ -427,7 +427,7 @@
     {
       "incident_id": "fixture-054",
       "incident_offense": "DUI",
-      "incident_date": "2025-07-24T17:37:51Z",
+      "incident_date": "2025-09-24T17:37:51Z",
       "incident_address": "1360 Jackson Blvd, Monroe, LA",
       "incident_latitude": 32.51744,
       "incident_longitude": -92.122097
@@ -435,7 +435,7 @@
     {
       "incident_id": "fixture-055",
       "incident_offense": "Trespassing",
-      "incident_date": "2025-07-31T22:19:19Z",
+      "incident_date": "2025-09-31T22:19:19Z",
       "incident_address": "1052 Jefferson Rd, Minden, LA",
       "incident_latitude": 32.616227,
       "incident_longitude": -93.280298
@@ -443,7 +443,7 @@
     {
       "incident_id": "fixture-056",
       "incident_offense": "Arson",
-      "incident_date": "2025-07-24T12:34:45Z",
+      "incident_date": "2025-09-24T12:34:45Z",
       "incident_address": "1449 Oak Blvd, Winnsboro, LA",
       "incident_latitude": 32.165617,
       "incident_longitude": -91.730966
@@ -451,7 +451,7 @@
     {
       "incident_id": "fixture-057",
       "incident_offense": "Robbery",
-      "incident_date": "2025-07-31T08:32:21Z",
+      "incident_date": "2025-09-31T08:32:21Z",
       "incident_address": "560 Maple Ave, Farmerville, LA",
       "incident_latitude": 32.779561,
       "incident_longitude": -92.405427
@@ -459,15 +459,15 @@
     {
       "incident_id": "fixture-058",
       "incident_offense": "Burglary",
-      "incident_date": "2025-08-07T09:28:21Z",
+      "incident_date": "2025-08-09T09:28:21Z",
       "incident_address": "948 Jackson Ave, Ruston, LA",
       "incident_latitude": 32.518804,
-      "incident_longitude": -92.637079
+      "incident_longitude": -92.637099
     },
     {
       "incident_id": "fixture-059",
       "incident_offense": "DUI",
-      "incident_date": "2025-07-16T13:20:04Z",
+      "incident_date": "2025-09-16T13:20:04Z",
       "incident_address": "1928 Oak Rd, Tallulah, LA",
       "incident_latitude": 32.408715,
       "incident_longitude": -91.163546
@@ -475,7 +475,7 @@
     {
       "incident_id": "fixture-060",
       "incident_offense": "Drug Violation",
-      "incident_date": "2025-07-18T17:22:59Z",
+      "incident_date": "2025-09-18T17:22:59Z",
       "incident_address": "1241 Maple St, West Monroe, LA",
       "incident_latitude": 32.514467,
       "incident_longitude": -92.160525
@@ -483,7 +483,7 @@
     {
       "incident_id": "fixture-061",
       "incident_offense": "Disorderly Conduct",
-      "incident_date": "2025-07-31T16:33:12Z",
+      "incident_date": "2025-09-31T16:33:12Z",
       "incident_address": "1646 Jefferson Dr, Bastrop, LA",
       "incident_latitude": 32.772021,
       "incident_longitude": -91.918479
@@ -491,7 +491,7 @@
     {
       "incident_id": "fixture-062",
       "incident_offense": "Assault",
-      "incident_date": "2025-08-08T07:54:36Z",
+      "incident_date": "2025-08-08T09:54:36Z",
       "incident_address": "1021 Elm Ave, Tallulah, LA",
       "incident_latitude": 32.384516,
       "incident_longitude": -91.194626
@@ -499,7 +499,7 @@
     {
       "incident_id": "fixture-063",
       "incident_offense": "DUI",
-      "incident_date": "2025-07-27T21:36:57Z",
+      "incident_date": "2025-09-27T21:36:57Z",
       "incident_address": "662 Jefferson St, Winnsboro, LA",
       "incident_latitude": 32.143501,
       "incident_longitude": -91.723101
@@ -507,7 +507,7 @@
     {
       "incident_id": "fixture-064",
       "incident_offense": "Disorderly Conduct",
-      "incident_date": "2025-07-20T04:45:15Z",
+      "incident_date": "2025-09-20T04:45:15Z",
       "incident_address": "383 Pine Ave, Tallulah, LA",
       "incident_latitude": 32.402408,
       "incident_longitude": -91.174936
@@ -518,12 +518,12 @@
       "incident_date": "2025-08-01T08:22:45Z",
       "incident_address": "1211 Jefferson Rd, Minden, LA",
       "incident_latitude": 32.625427,
-      "incident_longitude": -93.280713
+      "incident_longitude": -93.280913
     },
     {
       "incident_id": "fixture-066",
       "incident_offense": "Trespassing",
-      "incident_date": "2025-07-17T05:37:50Z",
+      "incident_date": "2025-09-17T05:37:50Z",
       "incident_address": "1854 Jackson Rd, Ruston, LA",
       "incident_latitude": 32.51374,
       "incident_longitude": -92.628557
@@ -547,69 +547,69 @@
     {
       "incident_id": "fixture-069",
       "incident_offense": "Disorderly Conduct",
-      "incident_date": "2025-07-17T14:17:33Z",
+      "incident_date": "2025-09-17T14:17:33Z",
       "incident_address": "1957 Washington Dr, Monroe, LA",
       "incident_latitude": 32.534982,
       "incident_longitude": -92.122008
     },
     {
-      "incident_id": "fixture-070",
+      "incident_id": "fixture-090",
       "incident_offense": "Drug Violation",
-      "incident_date": "2025-07-25T02:36:14Z",
+      "incident_date": "2025-09-25T02:36:14Z",
       "incident_address": "202 Elm Rd, Rayville, LA",
       "incident_latitude": 32.467652,
       "incident_longitude": -91.754661
     },
     {
-      "incident_id": "fixture-071",
+      "incident_id": "fixture-091",
       "incident_offense": "Fraud",
-      "incident_date": "2025-07-29T19:04:00Z",
+      "incident_date": "2025-09-29T19:04:00Z",
       "incident_address": "1640 Washington Blvd, Bossier City, LA",
       "incident_latitude": 32.511147,
       "incident_longitude": -93.722903
     },
     {
-      "incident_id": "fixture-072",
+      "incident_id": "fixture-092",
       "incident_offense": "Vehicle Theft",
-      "incident_date": "2025-07-27T04:06:43Z",
+      "incident_date": "2025-09-27T04:06:43Z",
       "incident_address": "1431 Oak Ln, Grambling, LA",
       "incident_latitude": 32.524358,
       "incident_longitude": -92.715092
     },
     {
-      "incident_id": "fixture-073",
+      "incident_id": "fixture-093",
       "incident_offense": "Theft",
-      "incident_date": "2025-07-23T16:24:45Z",
+      "incident_date": "2025-09-23T16:24:45Z",
       "incident_address": "588 Pine Rd, Ruston, LA",
       "incident_latitude": 32.525941,
       "incident_longitude": -92.628028
     },
     {
-      "incident_id": "fixture-074",
+      "incident_id": "fixture-094",
       "incident_offense": "Arson",
-      "incident_date": "2025-07-28T17:25:11Z",
+      "incident_date": "2025-09-28T17:25:11Z",
       "incident_address": "1670 Cypress Ave, Winnsboro, LA",
       "incident_latitude": 32.16435,
       "incident_longitude": -91.712183
     },
     {
-      "incident_id": "fixture-075",
+      "incident_id": "fixture-095",
       "incident_offense": "Vandalism",
-      "incident_date": "2025-07-21T12:49:07Z",
+      "incident_date": "2025-09-21T12:49:09Z",
       "incident_address": "1285 Main Blvd, Rayville, LA",
       "incident_latitude": 32.47409,
       "incident_longitude": -91.747945
     },
     {
-      "incident_id": "fixture-076",
+      "incident_id": "fixture-096",
       "incident_offense": "Burglary",
-      "incident_date": "2025-07-28T01:48:52Z",
+      "incident_date": "2025-09-28T01:48:52Z",
       "incident_address": "308 Elm Ln, Rayville, LA",
       "incident_latitude": 32.466293,
       "incident_longitude": -91.775655
     },
     {
-      "incident_id": "fixture-077",
+      "incident_id": "fixture-097",
       "incident_offense": "Theft",
       "incident_date": "2025-08-02T03:23:46Z",
       "incident_address": "1191 Washington Ln, Rayville, LA",
@@ -617,7 +617,7 @@
       "incident_longitude": -91.759828
     },
     {
-      "incident_id": "fixture-078",
+      "incident_id": "fixture-098",
       "incident_offense": "Fraud",
       "incident_date": "2025-08-09T02:00:02Z",
       "incident_address": "316 Washington Blvd, Bossier City, LA",
@@ -625,7 +625,7 @@
       "incident_longitude": -93.725727
     },
     {
-      "incident_id": "fixture-079",
+      "incident_id": "fixture-099",
       "incident_offense": "Arson",
       "incident_date": "2025-08-10T14:45:12Z",
       "incident_address": "1432 Elm Dr, Winnsboro, LA",
@@ -635,7 +635,7 @@
     {
       "incident_id": "fixture-080",
       "incident_offense": "Trespassing",
-      "incident_date": "2025-07-29T07:34:40Z",
+      "incident_date": "2025-09-29T09:34:40Z",
       "incident_address": "760 Maple St, Farmerville, LA",
       "incident_latitude": 32.781425,
       "incident_longitude": -92.422449
@@ -667,7 +667,7 @@
     {
       "incident_id": "fixture-084",
       "incident_offense": "Theft",
-      "incident_date": "2025-07-20T19:17:22Z",
+      "incident_date": "2025-09-20T19:17:22Z",
       "incident_address": "702 Maple Rd, Tallulah, LA",
       "incident_latitude": 32.386353,
       "incident_longitude": -91.18452
@@ -683,7 +683,7 @@
     {
       "incident_id": "fixture-086",
       "incident_offense": "Vandalism",
-      "incident_date": "2025-07-28T11:46:51Z",
+      "incident_date": "2025-09-28T11:46:51Z",
       "incident_address": "572 Oak Ln, Tallulah, LA",
       "incident_latitude": 32.395224,
       "incident_longitude": -91.181474
@@ -691,7 +691,7 @@
     {
       "incident_id": "fixture-087",
       "incident_offense": "Arson",
-      "incident_date": "2025-07-25T06:35:22Z",
+      "incident_date": "2025-09-25T06:35:22Z",
       "incident_address": "492 Maple Ln, West Monroe, LA",
       "incident_latitude": 32.510923,
       "incident_longitude": -92.14906
@@ -699,7 +699,7 @@
     {
       "incident_id": "fixture-088",
       "incident_offense": "Disorderly Conduct",
-      "incident_date": "2025-07-30T00:35:30Z",
+      "incident_date": "2025-09-30T00:35:30Z",
       "incident_address": "305 Maple Blvd, Bastrop, LA",
       "incident_latitude": 32.796932,
       "incident_longitude": -91.909334
@@ -707,7 +707,7 @@
     {
       "incident_id": "fixture-089",
       "incident_offense": "Disorderly Conduct",
-      "incident_date": "2025-07-22T10:21:15Z",
+      "incident_date": "2025-09-22T10:21:15Z",
       "incident_address": "661 Main St, West Monroe, LA",
       "incident_latitude": 32.527986,
       "incident_longitude": -92.145997
@@ -715,7 +715,7 @@
     {
       "incident_id": "fixture-090",
       "incident_offense": "Drug Violation",
-      "incident_date": "2025-07-21T06:23:51Z",
+      "incident_date": "2025-09-21T06:23:51Z",
       "incident_address": "1887 Main Dr, Farmerville, LA",
       "incident_latitude": 32.786168,
       "incident_longitude": -92.387081
@@ -723,7 +723,7 @@
     {
       "incident_id": "fixture-091",
       "incident_offense": "Theft",
-      "incident_date": "2025-07-28T13:01:59Z",
+      "incident_date": "2025-09-28T13:01:59Z",
       "incident_address": "1864 Jefferson St, Shreveport, LA",
       "incident_latitude": 32.515127,
       "incident_longitude": -93.731562
@@ -731,7 +731,7 @@
     {
       "incident_id": "fixture-092",
       "incident_offense": "DUI",
-      "incident_date": "2025-07-18T21:20:00Z",
+      "incident_date": "2025-09-18T21:20:00Z",
       "incident_address": "410 Pine Dr, Grambling, LA",
       "incident_latitude": 32.511253,
       "incident_longitude": -92.724438
@@ -739,7 +739,7 @@
     {
       "incident_id": "fixture-093",
       "incident_offense": "Fraud",
-      "incident_date": "2025-07-27T05:49:08Z",
+      "incident_date": "2025-09-27T05:49:08Z",
       "incident_address": "1688 Walnut Rd, Shreveport, LA",
       "incident_latitude": 32.531795,
       "incident_longitude": -93.742996
@@ -747,7 +747,7 @@
     {
       "incident_id": "fixture-094",
       "incident_offense": "Fraud",
-      "incident_date": "2025-07-31T02:40:05Z",
+      "incident_date": "2025-09-31T02:40:05Z",
       "incident_address": "1264 Jackson St, Bastrop, LA",
       "incident_latitude": 32.765505,
       "incident_longitude": -91.915237
@@ -755,7 +755,7 @@
     {
       "incident_id": "fixture-095",
       "incident_offense": "Robbery",
-      "incident_date": "2025-07-29T03:12:34Z",
+      "incident_date": "2025-09-29T03:12:34Z",
       "incident_address": "1452 Oak Ave, Rayville, LA",
       "incident_latitude": 32.472294,
       "incident_longitude": -91.745986
@@ -763,7 +763,7 @@
     {
       "incident_id": "fixture-096",
       "incident_offense": "Fraud",
-      "incident_date": "2025-08-07T03:44:57Z",
+      "incident_date": "2025-08-09T03:44:57Z",
       "incident_address": "1511 Jackson Rd, West Monroe, LA",
       "incident_latitude": 32.524053,
       "incident_longitude": -92.137105
@@ -771,7 +771,7 @@
     {
       "incident_id": "fixture-097",
       "incident_offense": "Arson",
-      "incident_date": "2025-08-07T07:51:33Z",
+      "incident_date": "2025-08-09T09:51:33Z",
       "incident_address": "245 Maple Blvd, Shreveport, LA",
       "incident_latitude": 32.524044,
       "incident_longitude": -93.755145
@@ -779,7 +779,7 @@
     {
       "incident_id": "fixture-098",
       "incident_offense": "DUI",
-      "incident_date": "2025-07-23T12:27:34Z",
+      "incident_date": "2025-09-23T12:27:34Z",
       "incident_address": "1960 Elm Ave, Winnsboro, LA",
       "incident_latitude": 32.154547,
       "incident_longitude": -91.722871
