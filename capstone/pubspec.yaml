@@ -34,8 +34,11 @@ dependencies:
   cloud_firestore: ^4.17.5
   firebase_auth: ^4.17.7
   firebase_core: ^2.30.0
-  firebase_app_check: ^0.2.0+6
+  firebase_app_check: ^0.2.1+8
   intl: ^0.18.1
+  encrypt: ^5.0.3
+  crypto: ^3.0.2
+  flutter_secure_storage: ^9.0.0
 
   # mapbox plugins
   mapbox_maps_flutter: ^2.9.0

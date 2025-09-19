@@ -18,6 +18,8 @@ import 'friend_screen.dart';
 import '../models/crime_incident.dart';
 import '../services/crime_fixture_data_source.dart';
 import '../models/crime_severity.dart';
+import '../utils/location_permissions.dart';
+
 
 class MapPage extends StatefulWidget {
   const MapPage({super.key});
@@ -68,6 +70,7 @@ class _MapPageState extends State<MapPage> {
   void initState() {
     super.initState();
       _checkUserAuthentication();
+      _initLocationDependentFeatures();
       getLocationUpdates().then((_) {
       getPolylinePoints().then(generatePolyline);
     });
@@ -92,9 +95,36 @@ class _MapPageState extends State<MapPage> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      body: _currentPosition == null
-          ? const Center(child: CircularProgressIndicator())
+      return Scaffold(
+    body: _currentPosition == null
+        ? Center(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                const CircularProgressIndicator(),
+                const SizedBox(height: 16),
+                const Text(
+                  "Location access is required to display the map.",
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 12),
+                ElevatedButton.icon(
+                  icon: const Icon(Icons.location_on),
+                  label: const Text("Grant Location Access"),
+                  onPressed: () async {
+                    final granted = await requestLocationPermission(context);
+                    if (granted) {
+                      await _initLocationDependentFeatures();
+                    } else {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text("Location permission denied.")),
+                      );
+                    }
+                  },
+                ),
+              ],
+            ),
+          )
           : Stack(
               children: [
                 GoogleMap(
@@ -593,6 +623,17 @@ class _MapPageState extends State<MapPage> {
       ),
     );
   }
+  
+  Future<void> _initLocationDependentFeatures() async {
+  final granted = await requestLocationPermission(context);
+  debugPrint("Location permission granted: $granted");
+  if (!granted) return;
+
+  await getLocationUpdates();
+  final points = await getPolylinePoints();
+  generatePolyline(points);
+}
+
 
   // Location / camera / polyline
 
@@ -603,6 +644,7 @@ class _MapPageState extends State<MapPage> {
     }
 
     _location.onLocationChanged.listen((loc) {
+      debugPrint("Got location update: ${loc.latitude}, ${loc.longitude}");
       if (loc.latitude != null && loc.longitude != null) {
         final pos = LatLng(loc.latitude!, loc.longitude!);
         setState(() => _currentPosition = pos);

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import '../services/encryption_service.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -16,7 +17,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   late TextEditingController _displayNameController;
   late TextEditingController _emailController;
   late TextEditingController _passwordController;
-  TextEditingController _phoneController = TextEditingController();
+  //TextEditingController _phoneController = TextEditingController();
 
   bool _loading = false;
 
@@ -39,40 +40,45 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   Future<void> _saveChanges() async {
     final user = _auth.currentUser;
-    if(user == null) return;
+      if (user == null) return;
 
-    try{
-      //Update the display name
-      await user.updateDisplayName(_displayNameController.text);
-      await FirebaseFirestore.instance.collection('users').doc(user.uid).update({
-        'displayName': _displayNameController.text,
-      });
+      setState(() => _loading = true);
 
-      //Update email if changed
-      if(_emailController.text != user.email) {
-        await user.updateEmail(_emailController.text);
-        await FirebaseFirestore.instance.collection('users').doc(user.uid)
-        .update({'email': _emailController.text,
+      try {
+        // Update Firebase Auth profile (not encrypted)
+        await user.updateDisplayName(_displayNameController.text);
+        if (_emailController.text != user.email) {
+          await user.updateEmail(_emailController.text);
+        }
+        if (_passwordController.text.isNotEmpty) {
+          await user.updatePassword(_passwordController.text);
+        }
+
+        // Encrypt sensitive fields
+        final encryptedName = await EncryptionService.encrypt(_displayNameController.text);
+        final encryptedEmail = await EncryptionService.encrypt(_emailController.text);
+        //final encryptedPhone = await EncryptionService.encrypt(_phoneController.text.trim());
+
+        // Save encrypted data to Firestore
+        await FirebaseFirestore.instance.collection('users').doc(user.uid).update({
+          'full_name': encryptedName,
+          'email': encryptedEmail,
+          //'phone': encryptedPhone,
         });
-      }
 
-      //Update password if provided
-      if(_passwordController.text.isNotEmpty) {
-        await user.updatePassword(_passwordController.text);
-      }
-
-      await user.reload();
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Profile updated successfully')),
-      );
-    } on FirebaseAuthException catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error: ${e.message}')),
-      );
-    } finally {
-      setState(() => _loading = false);
-    }
+        await user.reload();
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Profile updated successfully')),
+          );
+      } on FirebaseAuthException catch (e) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error: ${e.message}')),
+        );
+        } finally {
+          setState(() => _loading = false);
+        }
   }
+
 
   @override
   Widget build(BuildContext context) {
@@ -109,15 +115,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   return null;
                 },
               ),
-              TextFormField(
+              /*TextFormField(
                 controller: _phoneController,
                 decoration: const InputDecoration(labelText: 'Phone Number (+1234567890)'),
-              ),
-              ElevatedButton.icon(
+              ),*/
+              /*ElevatedButton.icon(
                 icon: const Icon(Icons.phone),
                 label: const Text('Link Phone for MFA'),
                 onPressed: _linkPhoneNumber,
-              ),
+              ),*/
               const SizedBox(height: 24),
               ElevatedButton.icon(
                 icon: const Icon(Icons.save),
@@ -130,7 +136,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       ),
     );
   }
-  void _linkPhoneNumber() async {
+  /*void _linkPhoneNumber() async {
     final phone = _phoneController.text.trim();
       if (phone.isEmpty) return;
 
@@ -163,9 +169,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
         },
         codeAutoRetrievalTimeout: (_) {},
       );
-  }
+  }*/
 
-  Future<String?> _askUserForSmsCode() async {
+  /*Future<String?> _askUserForSmsCode() async {
     String? smsCode;
       await showDialog(
       context: context,
@@ -190,5 +196,5 @@ class _SettingsScreenState extends State<SettingsScreen> {
     },
   );
   return smsCode;
-}
+}*/
 }

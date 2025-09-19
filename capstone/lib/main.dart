@@ -1,6 +1,7 @@
 import 'package:capstone/screens/auth_screen.dart';
 import 'package:capstone/screens/map_page.dart';
-import 'package:capstone/screens/home_page.dart';
+//import 'package:capstone/screens/home_page.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:mapbox_maps_flutter/mapbox_maps_flutter.dart';
 import 'package:flutter/material.dart';
@@ -8,9 +9,7 @@ import 'package:flutter_speed_dial/flutter_speed_dial.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'firebase_options.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_app_check/firebase_app_check.dart';
-
 
 void main() async{
   WidgetsFlutterBinding.ensureInitialized();
@@ -18,10 +17,13 @@ void main() async{
     options: DefaultFirebaseOptions.currentPlatform,
   );
   await FirebaseAppCheck.instance.activate(
-    androidProvider: AndroidProvider.playIntegrity,
-    appleProvider: AppleProvider.appAttest, // Optional
+    androidProvider: kReleaseMode ? AndroidProvider.playIntegrity
+    : AndroidProvider.debug,
+    appleProvider: kReleaseMode ? AppleProvider.appAttest : AppleProvider.debug, // Optional
+    
   );
   await setup();
+
   runApp(const MyApp());
 }
 

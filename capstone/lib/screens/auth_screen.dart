@@ -5,9 +5,10 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import '../services/firestore_service.dart';
-import 'home_page.dart';
+import 'map_page.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'settings_screen.dart';
+import '../services/encryption_service.dart';
 
 
 class AuthScreen extends StatefulWidget{
@@ -21,7 +22,7 @@ class _AuthScreenState extends State<AuthScreen>{
   bool isLogin = true;
   String email = '', password = '', displayName = '';
   String error = '';
-  String phone = '';
+  //String phone = '';
 
   void submit() async {
     if (!_formKey.currentState!.validate()) return;
@@ -47,15 +48,21 @@ class _AuthScreenState extends State<AuthScreen>{
         print("Auth successful for UID: $uid");
 
         // Always write or update the profile after auth
-        await writeUserProfile(
-          displayName: isLogin
-            ? (userCred.user?.displayName ?? 'Unnamed')
-            : displayName,
-          email: email,
-          photoURL: userCred.user?.photoURL,
-        );
+        if (!isLogin) {
+        final encryptedName = await EncryptionService.encrypt(displayName);
+        final encryptedEmail = await EncryptionService.encrypt(email);
+        //final encryptedPhone = await EncryptionService.encrypt(phone);
 
-      Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const HomePage()));
+        await FirebaseFirestore.instance.collection('users').doc(uid).set({
+          'full_name': encryptedName,
+          'email': encryptedEmail,
+          //'phone': encryptedPhone,
+          'created_at': Timestamp.now(),
+        });
+}
+
+
+      Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const MapPage()));
     } catch (e, stack) {
         print("Auth error: $e");
         print(stack);
@@ -94,7 +101,7 @@ class _AuthScreenState extends State<AuthScreen>{
                 onSaved: (val) => password = val!,
                 validator: (val) => val!.length < 6 ? '6+ chars' : null,
               ),
-              TextFormField(
+              /*TextFormField(
                 key: const ValueKey('phone'),
                 decoration: const InputDecoration(labelText: 'Phone Number (+1234567890)'),
                 keyboardType: TextInputType.phone,
@@ -105,7 +112,7 @@ class _AuthScreenState extends State<AuthScreen>{
                   }
                   return null;
                 },
-              ),
+              ),*/
               const SizedBox(height: 12),
               ElevatedButton(
                 onPressed: submit,
@@ -123,7 +130,7 @@ class _AuthScreenState extends State<AuthScreen>{
     );
   }
 
-    void _linkPhoneNumberMfa(String phoneNumber) async {
+    /*void _linkPhoneNumberMfa(String phoneNumber) async {
     try {
       await FirebaseAuth.instance.verifyPhoneNumber(
         phoneNumber: phoneNumber,
@@ -183,6 +190,6 @@ class _AuthScreenState extends State<AuthScreen>{
           },
         );
         return code;
-    }
+    }*/
 }
 
