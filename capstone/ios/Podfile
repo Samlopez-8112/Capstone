@@ -1,0 +1,74 @@
+platform :ios, '14.0'
+
+# Disable CocoaPods stats collection
+ENV['COCOAPODS_DISABLE_STATS'] = 'true'
+
+project 'Runner', {
+  'Debug' => :debug,
+  'Profile' => :release,
+  'Release' => :release,
+}
+
+# Find Flutter SDK path
+def flutter_root
+  generated_xcode_build_settings_path = File.expand_path(File.join('..', 'Flutter', 'Generated.xcconfig'), __FILE__)
+  unless File.exist?(generated_xcode_build_settings_path)
+    raise "#{generated_xcode_build_settings_path} must exist. Run flutter pub get first."
+  end
+
+  File.foreach(generated_xcode_build_settings_path) do |line|
+    matches = line.match(/FLUTTER_ROOT\=(.*)/)
+    return matches[1].strip if matches
+  end
+  raise "FLUTTER_ROOT not found. Delete Generated.xcconfig, then run flutter pub get."
+end
+
+require File.expand_path(File.join('packages', 'flutter_tools', 'bin', 'podhelper'), flutter_root)
+
+flutter_ios_podfile_setup
+
+target 'Runner' do
+  # Required for Firebase/Mapbox interop
+  use_frameworks! :linkage => :static
+  use_modular_headers!
+
+  # Pin gRPC versions (Firestore requires ~1.62.x)
+  pod 'gRPC-Core', '~> 1.62.0'
+  pod 'gRPC-C++',  '~> 1.62.0'
+
+  # Install all Flutter plugins
+  flutter_install_all_ios_pods File.dirname(File.realpath(__FILE__))
+
+  target 'RunnerTests' do
+    inherit! :search_paths
+  end
+end
+
+post_install do |installer|
+  installer.pods_project.targets.each do |target|
+    flutter_additional_ios_build_settings(target)
+
+    target.build_configurations.each do |config|
+      # Always set minimum iOS version consistently
+      config.build_settings['IPHONEOS_DEPLOYMENT_TARGET'] = '14.0'
+
+      # Fix "unsupported architecture arm64" on Apple Silicon simulators
+      config.build_settings["EXCLUDED_ARCHS[sdk=iphonesimulator*]"] = "arm64"
+
+      # Force C++20 for gRPC/BoringSSL/abseil (needed for templates in Firestore)
+      if ['gRPC-Core', 'gRPC-C++', 'BoringSSL-GRPC', 'abseil'].include?(target.name)
+        config.build_settings['CLANG_CXX_LANGUAGE_STANDARD'] = 'c++20'
+        config.build_settings['CLANG_CXX_LIBRARY'] = 'libc++'
+      end
+
+      # Strip out unsupported '-G' flags everywhere
+      ['OTHER_CFLAGS', 'OTHER_LDFLAGS'].each do |flag|
+        if config.build_settings[flag].is_a?(String)
+          config.build_settings[flag] = config.build_settings[flag].gsub('-G', '')
+        elsif config.build_settings[flag].is_a?(Array)
+          config.build_settings[flag] = config.build_settings[flag].map { |f| f.gsub('-G', '') }
+        end
+      end
+    end
+  end
+end

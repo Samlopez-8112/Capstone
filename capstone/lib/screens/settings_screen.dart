@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../services/encryption_service.dart';
+import '../offline_maps/offline_maps_page';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -130,6 +131,31 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 label: const Text('Save Changes'),
                 onPressed: _saveChanges,
               ),
+
+              //Offline Maps button
+              const SizedBox(height: 12),
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton.icon(
+                  icon: const Icon(Icons.download_for_offline_outlined),
+                  label: const Text('Offline Maps'),
+                  style: ElevatedButton.styleFrom(
+                    shape: const StadiumBorder(),                 // oval/pill
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                    backgroundColor: Theme.of(context).colorScheme.primary,
+                    foregroundColor: Theme.of(context).colorScheme.onPrimary,
+                    elevation: 0,
+                  ),
+                  onPressed: () {
+                    Navigator.of(context).push(
+                      MaterialPageRoute(
+                        builder: (_) => const OfflineMapsPage(),
+                      ),
+                    );
+                  },
+                ),
+              ),
+              // ----------------------------------------------------------------
             ],
           ),
         ),
