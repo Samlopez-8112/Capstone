@@ -16,9 +16,11 @@ import '../services/places_service.dart';
 import '../widgets/autocomplete_search_bar.dart';
 import 'friend_screen.dart';
 import '../models/crime_incident.dart';
-import '../services/crime_fixture_data_source.dart';
+//import '../services/crime_fixture_data_source.dart';
 import '../models/crime_severity.dart';
 import '../utils/location_permissions.dart';
+import '../services/crimeometer_service.dart';
+
 
 
 class MapPage extends StatefulWidget {
@@ -37,7 +39,9 @@ class _MapPageState extends State<MapPage> {
 
 
   // Crime overlay
-  final FixtureCrimeDataSource _crimeSource = FixtureCrimeDataSource(path: 'assets/crime_example.json'); // see crime data source service
+  //final FixtureCrimeDataSource _crimeSource = FixtureCrimeDataSource(path: 'assets/crime_example.json');  see crime data source service
+  // 9/20/25 replaced _crimeSource with _crimeService for actual API call
+  final CrimeometerService _crimeService = CrimeometerService();
   List<CrimeIncident> _lastCrimes = [];
   static const _crimePrefix = 'crime_'; // mark crime markers with a prefix for easier cleanup
 
@@ -1128,65 +1132,6 @@ class _MapPageState extends State<MapPage> {
       );
     }
 
-  // Fetch incidents using source service, display a marker for each result.
-  Future<void> _loadCrimesAt({
-    // fields necessary for api call
-    required LatLng center,
-    required double radiusMeters,
-    required int daysAgo,
-    }) async {
-      // fetch incidents meeting needs via crime source service
-    try {
-      final incidents = await _crimeSource.fetchIncidents(
-        center: center,
-        radiusMeters: radiusMeters,
-        daysAgo: daysAgo,
-      );
-      // Clear old crime markers
-      markers.removeWhere((id, _) => id.value.startsWith(_crimePrefix));
-
-      // if there are no incidents, show a snackbar
-      if (incidents.isEmpty) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('No recent incidents in this area.')),
-          );
-        }
-        setState(() {}); // reflect cleared markers
-        return;
-      }
-
-      _lastCrimes = incidents; // so the list sheet can show them
-      for (final c in incidents) {
-        // for all incidents, classify based on offense title
-        // classification handled in crime_severity.dart
-        final sev = classifySeverity(c.offense);
-        final id = MarkerId('$_crimePrefix${c.id}');
-        // place a marker for each crime
-        markers[id] = Marker(
-          markerId: id,
-          position: c.position,
-          icon: BitmapDescriptor.defaultMarkerWithHue(sev.hue),
-          infoWindow: InfoWindow(
-            title: '${c.offense} (${sev.label})',
-            snippet: _crimeSnippet(c),
-          ),
-        );
-      }
-
-      setState(() {}); // draw the map with the new markers
-      _showCrimesListSheet(); // show the list of crimes
-
-    } catch (e) { // if theres an error, snackbar for no load
-      debugPrint('Crime load error: $e');
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Could not load crime data for this area.')),
-        );
-      }
-    }
-  }
-
   // Open a drag bar for radius
   // Repurposes code from POI radius slider
   void _showCrimeRadiusSheet() {
@@ -1491,7 +1436,8 @@ Widget _buildCrimeSummaryView(LatLng center) {
   const days = 30;
 
   return FutureBuilder<List<CrimeIncident>>(
-    future: _crimeSource.fetchIncidents(
+    //future: _crimeSource.fetchIncidents(
+    future: _fetchCrimeometerIncidents(
       center: center,
       radiusMeters: radius,
       daysAgo: days,
@@ -1604,4 +1550,157 @@ Widget _buildCrimeSummaryView(LatLng center) {
     },
   );
 }
+  // Fetch incidents from Crimeometer, place markers and display popup
+  _loadCrimesAt({
+    required LatLng center,
+    required double radiusMeters,
+    required int daysAgo,
+    }) async {
+    try {
+      // Fetch data from Crimeometer
+      final incidents = await _fetchCrimeometerIncidents(
+        center: center,
+        radiusMeters: radiusMeters,
+        daysAgo: daysAgo,
+      );
+
+      // Clear old crime markers on new search
+      markers.removeWhere((id, _) => id.value.startsWith(_crimePrefix));
+
+      // For every incident, create a crime marker, give each a unique ID
+      _lastCrimes = incidents;
+      for (final c in incidents) {
+        final sev = classifySeverity(c.offense);
+        final mId = MarkerId('$_crimePrefix${c.id}');
+        markers[mId] = Marker( // dummy model displayed markers using 'incident_id' in dummy data, for real data, create unique IDs
+          markerId: mId,
+          position: c.position,
+          icon: BitmapDescriptor.defaultMarkerWithHue(sev.hue),
+          infoWindow: InfoWindow(
+            title: '${c.offense} (${sev.label})', // on tap of icon, display offense 
+            snippet: _crimeSnippet(c),
+          ),
+        );
+      }
+
+    setState(() {});       // refreshes map
+    _showCrimesListSheet(); // display the crimes on bottom popup 
+  } catch (e) {
+    debugPrint('Crime load error: $e'); // error handling
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Could not load crime data for this area.')),
+      );
+    }
+  }
+}
+ 
+// Assisted by ChatGPT, up-to-date method for retrieving data from crimeometer.
+Future<List<CrimeIncident>> _fetchCrimeometerIncidents({
+  required LatLng center,
+  required double radiusMeters,
+  required int daysAgo,
+  int page = 1,
+  int? pageSize,
+}) async {
+  // Call crimeometer_service
+  final payload = await _crimeService.fetchCrimeData(
+    latitude: center.latitude,
+    longitude: center.longitude,
+    distanceMiles: radiusMeters / 1609.34, // 1 mile, in meters
+    daysAgo: daysAgo,
+    page: page,
+    pageSize: pageSize,
+  );
+
+  // Convert incidents to a list of objects
+  final raw = _extractIncidentObjects(payload);
+
+  // map output to incident model
+  final out = <CrimeIncident>[];
+  for (final it in raw) {
+  if (it is! Map<String, dynamic>) continue;
+
+  // parse latitude and longitude (used in marker ids)
+  final lat = _pickDouble(it, ['incident_latitude', 'latitude', 'lat']);
+  final lon = _pickDouble(it, ['incident_longitude', 'longitude', 'lon', 'lng']);
+  if (lat == null || lon == null) continue;
+
+  // grab offense type
+  final offense = _pickString(it, [
+    'incident_offense', 'offense', 'incident_type', 'ucr_offense', 'nibrs_code'
+  ]) ?? 'Unknown';
+
+  // grab time
+  final whenStr = _pickString(it, [
+    'incident_date', 'incident_datetime', 'reported_at', 'date', 'datetime'
+  ]);
+  DateTime occurredAt;
+  try {
+    occurredAt = whenStr != null ? DateTime.parse(whenStr).toUtc() : DateTime.now().toUtc();
+  } catch (_) {
+    occurredAt = DateTime.now().toUtc();
+  }
+
+  // grab address
+  final addr = _pickString(it, ['incident_address', 'address', 'formatted_address', 'block_address']);
+
+  // look for an incident ID for display purposes
+  final id =
+      _pickString(it, ['incident_id', 'incident_reference', 'incident_uid', 'case_number', 'incident_number', 'id'])
+      ?? '${lat.toStringAsFixed(6)}_${lon.toStringAsFixed(6)}_${occurredAt.millisecondsSinceEpoch}';
+
+  // outputs an object of 'CrimeIncident' type
+  out.add(CrimeIncident(
+    id: id,
+    offense: offense,
+    occurredAt: occurredAt,
+    position: LatLng(lat, lon),
+    address: addr,
+    source: 'crimeometer',
+  ));
+}
+  return out;
+}
+
+/// Grabs incident objects as a list, tries various labels that might denote a new incident
+List<dynamic> _extractIncidentObjects(Map<String, dynamic> payload) {
+  final i1 = payload['incidents'];
+  if (i1 is List) return i1;
+
+  final i2 = payload['data'];
+  if (i2 is List) return i2;
+
+  if (payload['results'] is List) return (payload['results'] as List);
+
+  if (i2 is Map && i2['incidents'] is List) return (i2['incidents'] as List);
+
+  // Error handling: empty list if nothings recognized
+  return const [];
+}
+
+// pickString helper, chatGPT
+String? _pickString(Map<String, dynamic> m, List<String> keys) {
+  for (final k in keys) {
+    final v = m[k];
+    if (v == null) continue;
+    final s = v.toString().trim();
+    if (s.isNotEmpty) return s;
+  }
+  return null;
+}
+
+// pickDouble helper, chatGPT
+double? _pickDouble(Map<String, dynamic> m, List<String> keys) {
+  for (final k in keys) {
+    final v = m[k];
+    if (v == null) continue;
+    if (v is num) return v.toDouble();
+    final s = v.toString().trim();
+    final d = double.tryParse(s);
+    if (d != null) return d;
+  }
+  return null;
+}
+
   }
