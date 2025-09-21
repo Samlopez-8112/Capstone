@@ -33,12 +33,13 @@ class _AuthScreenState extends State<AuthScreen>{
     try {
       UserCredential userCred;
       if (isLogin) {
+        // LOGIN FLOW
         print("🔐 Logging in user...");
-          userCred = await FirebaseAuth.instance.signInWithEmailAndPassword(
+        userCred = await FirebaseAuth.instance.signInWithEmailAndPassword(
           email: email,
           password: password,
         );
-        //Check for new device
+
         final uid = userCred.user!.uid;
         final deviceId = await getUniqieDeviceId();
 
@@ -50,78 +51,74 @@ class _AuthScreenState extends State<AuthScreen>{
 
         final deviceSnap = await deviceRef.get();
 
-        if(!deviceSnap.exists){
+        if (!deviceSnap.exists) {
           await deviceRef.set({
             'deviceId': deviceId,
             'createAt': FieldValue.serverTimestamp(),
           });
 
-          //Trigger email alert via Firestore
-          await FirebaseFirestore.instance.collection('new_device_logins').add({
-            'uid': uid,
-            'email': email,
-            'deviceId': deviceId,
-            'timestamp': FieldValue.serverTimestamp(),
-          });
+        try {
+          print("📧 Writing new mail doc to Firestore...");
 
-          //Send email alert via Firestore "mail" collection
           await FirebaseFirestore.instance.collection('mail').add({
             'to': email,
-            'message':{
+            'message': {
               'subject': 'New Device Login Detected',
               'text': '''
-            Hello,
+Hello,
 
-            A new device just logged into your account.
+A new device just logged into your account.
 
-              Device ID: $deviceId
-              Time: ${DateTime.now().toUtc()}
+Device ID: $deviceId
+Time: ${DateTime.now().toUtc()}
 
-              If this was you, no action is needed.
-              If not, please reset your password immediately.
+If this was you, no action is needed.
+If not, please reset your password immediately.
 
-              Stay safe, 
-              Bypassr Security Team
-              '''
-            }
-          });
-        }
-      } else {
-          print("🆕 Creating new user...");
-            userCred = await FirebaseAuth.instance.createUserWithEmailAndPassword(
-              email: email,
-              password: password,
-            );
-        }
-
-        final uid = userCred.user?.uid;
-        print("Auth successful for UID: $uid");
-
-        // Always write or update the profile after auth
-        if (!isLogin) {
-        final encryptedName = await EncryptionService.encrypt(displayName);
-        final encryptedEmail = await EncryptionService.encrypt(email);
-        //final encryptedPhone = await EncryptionService.encrypt(phone);
-
-        final rawDeviceId = await getUniqieDeviceId();
-        final encryptedDeviceId = await EncryptionService.encrypt(rawDeviceId);
-
-
-        await FirebaseFirestore.instance.collection('users').doc(uid).set({
-          'full_name': encryptedName,
-          'email': encryptedEmail,
-          //'phone': encryptedPhone,
-          'created_at': Timestamp.now(),
+Stay safe, 
+Bypassr Security Team
+'''
+          }
         });
+
+        print('✅ Added email alert to /mail collection');
+      } catch (e) {
+        print("❌ Failed to add email doc: $e");
+      }
+    }
+  } else {
+    // SIGNUP FLOW
+    print("🆕 Creating new user...");
+    userCred = await FirebaseAuth.instance.createUserWithEmailAndPassword(
+      email: email,
+      password: password,
+    );
+
+    final uid = userCred.user?.uid;
+    final encryptedName = await EncryptionService.encrypt(displayName);
+    final encryptedEmail = await EncryptionService.encrypt(email);
+    final rawDeviceId = await getUniqieDeviceId();
+    final encryptedDeviceId = await EncryptionService.encrypt(rawDeviceId);
+
+    await FirebaseFirestore.instance.collection('users').doc(uid).set({
+      'full_name': encryptedName,
+      'email': encryptedEmail,
+      'created_at': Timestamp.now(),
+    });
+  }
+
+  print("✅ Auth successful");
+  Navigator.pushReplacement(
+    context,
+    MaterialPageRoute(builder: (_) => const MapPage()),
+  );
+} catch (e, stack) {
+  print("Auth error: $e");
+  print(stack);
+  setState(() => error = e.toString());
 }
 
-
-      Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const MapPage()));
-    } catch (e, stack) {
-        print("Auth error: $e");
-        print(stack);
-        setState(() => error = e.toString());
-      }
+   
   }
 
 
