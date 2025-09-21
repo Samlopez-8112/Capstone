@@ -20,6 +20,8 @@ import '../models/crime_incident.dart';
 import '../models/crime_severity.dart';
 import '../utils/location_permissions.dart';
 import '../services/crimeometer_service.dart';
+import '../utils/crimefilter.dart';
+import 'dart:math' as math;
 
 
 
@@ -37,9 +39,19 @@ class _MapPageState extends State<MapPage> {
   bool isFollowingUser = true;
   bool _isDialOpen = false;
 
+  // fields for crime filter
+  // if filter is empty, will show all
+  Set<CrimeCategory> _activeFilters = {};
+
+  // Cache categories per incident to avoid recomputing every time
+  final Map<String, Set<CrimeCategory>> _categoryCache = {};
+
+  // save crimes currently rendered
+  List<CrimeIncident> _lastRenderedCrimes = [];
+
 
   // Crime overlay
-  //final FixtureCrimeDataSource _crimeSource = FixtureCrimeDataSource(path: 'assets/crime_example.json');  see crime data source service
+  // final FixtureCrimeDataSource _crimeSource = FixtureCrimeDataSource(path: 'assets/crime_example.json');  see crime data source service
   // 9/20/25 replaced _crimeSource with _crimeService for actual API call
   final CrimeometerService _crimeService = CrimeometerService();
   List<CrimeIncident> _lastCrimes = [];
@@ -148,6 +160,21 @@ class _MapPageState extends State<MapPage> {
                   onCameraIdle: _refreshHeatForViewport,
                   onLongPress: _onMapLongPress,
                   onTap: _onMapTap,
+                ),
+
+                // Filter icon
+                Positioned(
+                  top: 168, right: 16,
+                  child: Material(
+                    color: Colors.white,
+                    elevation: 2,
+                    shape: const CircleBorder(),
+                    child: IconButton(
+                      icon: const Icon(Icons.filter_alt_outlined),
+                      tooltip: 'Filter crimes',
+                      onPressed: _showCrimeFilterSheet,
+                    ),
+                  ),
                 ),
 
                 // Search bar at the top
@@ -1053,9 +1080,11 @@ class _MapPageState extends State<MapPage> {
   }
 
   // Show bottom modal listing returned crimes
-  void _showCrimesListSheet() {
-    if (_lastCrimes.isEmpty) return; // return if theres no crimes
+  bool _isCrimesSheetOpen = false;
 
+  void _showCrimesListSheet() {
+    if (_lastCrimes.isEmpty || _isCrimesSheetOpen) return; // return if theres no crimes
+    _isCrimesSheetOpen = true; // track if crime sheet is open
     showModalBottomSheet(
       context: context,
       builder: (ctx) => ListView.builder(
@@ -1085,6 +1114,7 @@ class _MapPageState extends State<MapPage> {
         },
       ),
     );
+    _isCrimesSheetOpen = false;
   }
 
   // Long press handler 
@@ -1569,19 +1599,9 @@ Widget _buildCrimeSummaryView(LatLng center) {
 
       // For every incident, create a crime marker, give each a unique ID
       _lastCrimes = incidents;
-      for (final c in incidents) {
-        final sev = classifySeverity(c.offense);
-        final mId = MarkerId('$_crimePrefix${c.id}');
-        markers[mId] = Marker( // dummy model displayed markers using 'incident_id' in dummy data, for real data, create unique IDs
-          markerId: mId,
-          position: c.position,
-          icon: BitmapDescriptor.defaultMarkerWithHue(sev.hue),
-          infoWindow: InfoWindow(
-            title: '${c.offense} (${sev.label})', // on tap of icon, display offense 
-            snippet: _crimeSnippet(c),
-          ),
-        );
-      }
+      _categoryCache.clear();
+      _renderFilteredCrimes();
+      // _showCrimesListSheet();
 
     setState(() {});       // refreshes map
     _showCrimesListSheet(); // display the crimes on bottom popup 
@@ -1650,57 +1670,239 @@ Future<List<CrimeIncident>> _fetchCrimeometerIncidents({
       _pickString(it, ['incident_id', 'incident_reference', 'incident_uid', 'case_number', 'incident_number', 'id'])
       ?? '${lat.toStringAsFixed(6)}_${lon.toStringAsFixed(6)}_${occurredAt.millisecondsSinceEpoch}';
 
-  // outputs an object of 'CrimeIncident' type
-  out.add(CrimeIncident(
-    id: id,
-    offense: offense,
-    occurredAt: occurredAt,
-    position: LatLng(lat, lon),
-    address: addr,
-    source: 'crimeometer',
-  ));
-}
-  return out;
-}
-
-/// Grabs incident objects as a list, tries various labels that might denote a new incident
-List<dynamic> _extractIncidentObjects(Map<String, dynamic> payload) {
-  final i1 = payload['incidents'];
-  if (i1 is List) return i1;
-
-  final i2 = payload['data'];
-  if (i2 is List) return i2;
-
-  if (payload['results'] is List) return (payload['results'] as List);
-
-  if (i2 is Map && i2['incidents'] is List) return (i2['incidents'] as List);
-
-  // Error handling: empty list if nothings recognized
-  return const [];
-}
-
-// pickString helper, chatGPT
-String? _pickString(Map<String, dynamic> m, List<String> keys) {
-  for (final k in keys) {
-    final v = m[k];
-    if (v == null) continue;
-    final s = v.toString().trim();
-    if (s.isNotEmpty) return s;
+    // outputs an object of 'CrimeIncident' type
+    out.add(CrimeIncident(
+      id: id,
+      offense: offense,
+      occurredAt: occurredAt,
+      position: LatLng(lat, lon),
+      address: addr,
+      source: 'crimeometer',
+    ));
   }
-  return null;
-}
-
-// pickDouble helper, chatGPT
-double? _pickDouble(Map<String, dynamic> m, List<String> keys) {
-  for (final k in keys) {
-    final v = m[k];
-    if (v == null) continue;
-    if (v is num) return v.toDouble();
-    final s = v.toString().trim();
-    final d = double.tryParse(s);
-    if (d != null) return d;
+    return out;
   }
-  return null;
-}
 
+  /// Grabs incident objects as a list, tries various labels that might denote a new incident
+  List<dynamic> _extractIncidentObjects(Map<String, dynamic> payload) {
+    final i1 = payload['incidents'];
+    if (i1 is List) return i1;
+
+    final i2 = payload['data'];
+    if (i2 is List) return i2;
+
+    if (payload['results'] is List) return (payload['results'] as List);
+
+    if (i2 is Map && i2['incidents'] is List) return (i2['incidents'] as List);
+
+    // Error handling: empty list if nothings recognized
+    return const [];
   }
+
+  // pickString helper, chatGPT
+  String? _pickString(Map<String, dynamic> m, List<String> keys) {
+    for (final k in keys) {
+      final v = m[k];
+      if (v == null) continue;
+      final s = v.toString().trim();
+      if (s.isNotEmpty) return s;
+    }
+    return null;
+  }
+
+  // pickDouble helper, chatGPT
+  double? _pickDouble(Map<String, dynamic> m, List<String> keys) {
+    for (final k in keys) {
+      final v = m[k];
+      if (v == null) continue;
+      if (v is num) return v.toDouble();
+      final s = v.toString().trim();
+      final d = double.tryParse(s);
+      if (d != null) return d;
+    }
+    return null;
+  }
+
+  // Return category of an incident based on offense title
+  // Offense categories are laid out in utils/crimefilter.dart
+  Set<CrimeCategory> _catsFor(CrimeIncident c) {
+    return _categoryCache.putIfAbsent(c.id, () => categoriesForOffense(c.offense));
+  }
+
+  // Returns a list of incidents that match filter
+  // If no filter is applied, returns the list as it was
+  List<CrimeIncident> _applyFilters(List<CrimeIncident> all) {
+    if (_activeFilters.isEmpty) return all;
+    return all.where((c) {
+      final cats = _catsFor(c);
+      // If "any" category selected matches, add to list
+      // this allows for selection of multiple categories
+      return cats.any(_activeFilters.contains);
+    }).toList();
+  }
+
+  /// Display map markers as defined by the filter
+  /// If the filter is empty, all are displayed (see _applyFilters)
+  void _renderFilteredCrimes() {
+
+    final filtered = _applyFilters(_lastCrimes); // filtered crime list
+
+    // Remove old crime markers
+    markers.removeWhere((id, _) => id.value.startsWith(_crimePrefix));
+    _coordHitCounts.clear(); // for jitter assistant ; prevents crimes from stacking atop eachother
+
+    // Display the markers
+    for (final c in filtered) {
+      final sev = classifySeverity(c.offense);
+      final mId = MarkerId('$_crimePrefix${c.id}');
+      final pos = _jitterIfDuplicate(c.position); // jitter helper call, overlapping incidents move a few units
+
+      // place marker at position 
+      markers[mId] = Marker(
+        markerId: mId,
+        position: pos,
+        icon: BitmapDescriptor.defaultMarkerWithHue(sev.hue),
+        infoWindow: InfoWindow(
+          title: '${c.offense} (${sev.label})', //offense title and severity on click
+          snippet: _crimeSnippet(c), 
+        ),
+      );
+    }
+
+    _lastRenderedCrimes = filtered; // track most recently rendered crimes
+    setState(() {}); // triggers visual for markers
+  }
+
+  // Crime popup bottom sheet, displays "FilterChips" for selection of crimes
+  // displays categories, enumerates crimes per category
+  // calls _renderFilteredCrimes on click of a button
+  Future<void> _showCrimeFilterSheet() async {
+    // Snapshot current selection
+    final local = Set<CrimeCategory>.from(_activeFilters);
+
+    // Counts the amount of offenses in a category
+    // for display beside selections
+    Map<CrimeCategory, int> counts = {};
+    for (final c in _lastCrimes) {
+      for (final cat in _catsFor(c)) {
+        counts[cat] = (counts[cat] ?? 0) + 1;
+      }
+    }
+
+    // label on button, category name + amount in area
+    String label(CrimeCategory cat, String text) {
+      final n = counts[cat] ?? 0;
+      return n > 0 ? '$text ($n)' : text;
+    }
+
+    // Filter selection popup sheet
+    await showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      builder: (ctx) {
+        return StatefulBuilder(builder: (ctx, setLocal) {
+          Widget chip(CrimeCategory cat, String text) {
+            final sel = local.contains(cat);
+            // display options as chips with label
+            return FilterChip(
+              label: Text(label(cat, text)),
+              selected: sel,
+              onSelected: (_) {
+                setLocal(() {
+                  // move on to next chip data before displaying
+                  sel ? local.remove(cat) : local.add(cat);
+                });
+              },
+            );
+          }
+
+          // Visual for filter popup
+          return Padding(
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text('Filter crimes', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600)),
+                const SizedBox(height: 12),
+                Wrap(
+                  // labels for each chip
+                  spacing: 8, runSpacing: 8,
+                  children: [
+                    chip(CrimeCategory.violent, 'Violent'),
+                    chip(CrimeCategory.theft, 'Theft'),
+                    chip(CrimeCategory.vehicle, 'Vehicle'),
+                    chip(CrimeCategory.property, 'Property'),
+                    chip(CrimeCategory.drug, 'Drug'),
+                    chip(CrimeCategory.other, 'Other'),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                Row(
+                  children: [
+                    // reset filters button, (clears filters list and re-renders markers)
+                    TextButton(
+                      onPressed: () {
+                        Navigator.pop(ctx);
+                        setState(() {
+                          _activeFilters.clear();
+                        });
+                        _renderFilteredCrimes();
+                      },
+                      child: const Text('Reset'),
+                    ),
+                    const Spacer(),
+                    // Apply settings button (Task mentions a debouncer, after testing, a button is more logical)
+                    ElevatedButton(
+                      onPressed: () {
+                        Navigator.pop(ctx);
+                        setState(() {
+                          _activeFilters = local;
+                        });
+                        _renderFilteredCrimes();
+                      },
+                      child: const Text('Apply'),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          );
+        });
+      },
+    );
+  }
+
+  // AI Assistant reccomended this method for 'jittering' when markers are atop eachother
+  // Tried it out, looks more appealing than without
+
+  //track how many markers occur at nearly the same coords
+  final Map<String, int> _coordHitCounts = {};
+
+  // if two markers occur on the same coords, count a 'hit' and adjust marker
+  LatLng _jitterIfDuplicate(LatLng pos) {
+    // Round so very close points are considered the same for stacking purposes.
+    final key = '${pos.latitude.toStringAsFixed(5)},${pos.longitude.toStringAsFixed(5)}';
+    final hit = (_coordHitCounts[key] ?? 0);
+    _coordHitCounts[key] = hit + 1;
+
+    if (hit == 0) return pos; // first marker stays exact
+
+    // Spread overlapping pins in small rings around the original point.
+    const double stepMeters = 6.0;                  // ≈6 m between rings
+    final ring = 1 + (hit ~/ 6);                    // 6 markers per ring
+    final slot = hit % 6;                           // position within the ring [0..5]
+    final angle = (slot / 6.0) * 2 * math.pi;
+
+    final rMeters = stepMeters * ring;
+
+    // meters → degrees
+    final dLat = rMeters / 111_111.0;
+    final dLon = rMeters / (111_111.0 * math.cos(pos.latitude * math.pi / 180));
+
+    return LatLng(
+      pos.latitude  + dLat * math.sin(angle),
+      pos.longitude + dLon * math.cos(angle),
+    );
+  }
+    }
