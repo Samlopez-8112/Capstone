@@ -9,6 +9,8 @@ import 'map_page.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'settings_screen.dart';
 import '../services/encryption_service.dart';
+import 'package:device_info_plus/device_info_plus.dart';
+import 'dart:io';
 
 
 class AuthScreen extends StatefulWidget{
@@ -36,6 +38,54 @@ class _AuthScreenState extends State<AuthScreen>{
           email: email,
           password: password,
         );
+        //Check for new device
+        final uid = userCred.user!.uid;
+        final deviceId = await getUniqieDeviceId();
+
+        final deviceRef = FirebaseFirestore.instance
+          .collection('users')
+          .doc(uid)
+          .collection('devices')
+          .doc(deviceId);
+
+        final deviceSnap = await deviceRef.get();
+
+        if(!deviceSnap.exists){
+          await deviceRef.set({
+            'deviceId': deviceId,
+            'createAt': FieldValue.serverTimestamp(),
+          });
+
+          //Trigger email alert via Firestore
+          await FirebaseFirestore.instance.collection('new_device_logins').add({
+            'uid': uid,
+            'email': email,
+            'deviceId': deviceId,
+            'timestamp': FieldValue.serverTimestamp(),
+          });
+
+          //Send email alert via Firestore "mail" collection
+          await FirebaseFirestore.instance.collection('mail').add({
+            'to': email,
+            'message':{
+              'subject': 'New Device Login Detected',
+              'text': '''
+            Hello,
+
+            A new device just logged into your account.
+
+              Device ID: $deviceId
+              Time: ${DateTime.now().toUtc()}
+
+              If this was you, no action is needed.
+              If not, please reset your password immediately.
+
+              Stay safe, 
+              Bypassr Security Team
+              '''
+            }
+          });
+        }
       } else {
           print("🆕 Creating new user...");
             userCred = await FirebaseAuth.instance.createUserWithEmailAndPassword(
@@ -52,6 +102,10 @@ class _AuthScreenState extends State<AuthScreen>{
         final encryptedName = await EncryptionService.encrypt(displayName);
         final encryptedEmail = await EncryptionService.encrypt(email);
         //final encryptedPhone = await EncryptionService.encrypt(phone);
+
+        final rawDeviceId = await getUniqieDeviceId();
+        final encryptedDeviceId = await EncryptionService.encrypt(rawDeviceId);
+
 
         await FirebaseFirestore.instance.collection('users').doc(uid).set({
           'full_name': encryptedName,
@@ -129,7 +183,18 @@ class _AuthScreenState extends State<AuthScreen>{
       ),
     );
   }
-
+  
+  Future<String> getUniqieDeviceId() async{
+    final deviceInfo = DeviceInfoPlugin();
+    if(Platform.isAndroid){
+      final android = await deviceInfo.androidInfo;
+      return '${android.manufacturer}_${android.model}_${android.id}';
+    }else if(Platform.isIOS){
+      final ios = await deviceInfo.iosInfo;
+      return '${ios.name}_${ios.systemVersion}_${ios.identifierForVendor}';
+    }
+    return 'unknown_device';
+  }
     /*void _linkPhoneNumberMfa(String phoneNumber) async {
     try {
       await FirebaseAuth.instance.verifyPhoneNumber(

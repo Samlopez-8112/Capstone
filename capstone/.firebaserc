@@ -1,0 +1,13 @@
+{
+  "projects": {
+    "default": "capstoneproject-sf2025"
+  },
+  "targets": {},
+  "etags": {
+    "capstoneproject-sf2025": {
+      "extensionInstances": {
+        "firestore-send-email": "62aba86f7e213af51957f6c53f64c2bed89805961761dd2995194158c305871f"
+      }
+    }
+  }
+}

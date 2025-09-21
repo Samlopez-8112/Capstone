@@ -39,6 +39,7 @@ dependencies:
   encrypt: ^5.0.3
   crypto: ^3.0.2
   flutter_secure_storage: ^9.0.0
+  device_info_plus: ^10.0.1
 
   # mapbox plugins
   mapbox_maps_flutter: ^2.9.0
