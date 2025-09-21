@@ -71,6 +71,7 @@ class _MapPageState extends State<MapPage> {
   final Map<MarkerId, Marker> markers = {};
   MarkerId? _searchMarkerId;
   String _travelMode = "driving";
+  bool _showModeButtons = false;
 
   // Nearby search state
   double _searchRadius = 2000;
@@ -184,51 +185,139 @@ class _MapPageState extends State<MapPage> {
                   ),
                 ),
 
-                // Search bar at the top
+                // Filter icon
+                if (_isCrimeViewActive)
                 Positioned(
-                  top: 50,
-                  left: 15,
-                  right: 15,
-                  child: AutocompleteSearchBar(
-                    onSuggestionSelected: (LatLng coords) async {
-                      final controller = await _mapController.future;
-                      setState(() {
-                        isFollowingUser = false;
-                        _destination = coords;
-
-                        // remove previous search marker if it exists
-                        if (_searchMarkerId != null) {
-                          markers.remove(_searchMarkerId);
-                        }
-
-                        final markerId = const MarkerId("search_temp");
-                        _searchMarkerId = markerId;
-
-                        // NOTE: We do NOT call _handleMarkerTap here because we
-                        // don’t have a Places "place_id" for the free-form search coords
-                        markers[markerId] = Marker(
-                          markerId: markerId,
-                          position: coords,
-                          icon: BitmapDescriptor.defaultMarkerWithHue(
-                              BitmapDescriptor.hueCyan),
-                              onTap: () => _openDetailsForLatLng(coords),
-                          infoWindow:
-                              const InfoWindow(title: "Searched Location"),
-                        );
-                      });
-
-                      controller.animateCamera(
-                        CameraUpdate.newLatLngZoom(coords, 13),
-                      );
-
-                      // If we already know the origin, update the route
-                      if (_origin != null && _destination != null) {
-                        final points = await getPolylinePoints();
-                        generatePolyline(points);
-                      }
-                      await _openDetailsForLatLng(coords);
-                    },
+                  top: 168, right: 16,
+                  child: Material(
+                    color: Colors.white,
+                    elevation: 2,
+                    shape: const CircleBorder(),
+                    child: IconButton(
+                      icon: const Icon(Icons.filter_alt_outlined),
+                      tooltip: 'Filter crimes',
+                      onPressed: _showCrimeFilterSheet,
+                    ),
                   ),
+                ),
+
+                // Search bar and route buttons
+                Column(
+                  children: [
+                    // search bar
+                    Positioned(
+                      top: 50,
+                      left: 15,
+                      right: 15,
+                      child: AutocompleteSearchBar(
+                        onSuggestionSelected: (LatLng coords) async {
+                          final controller = await _mapController.future;
+                          setState(() {
+                            isFollowingUser = false;
+                            _destination = coords;
+
+                            // remove previous search marker if it exists
+                            if (_searchMarkerId != null) {
+                              markers.remove(_searchMarkerId);
+                            }
+
+                            final markerId = const MarkerId("search_temp");
+                            _searchMarkerId = markerId;
+
+                            markers[markerId] = Marker(
+                              markerId: markerId,
+                              position: coords,
+                              icon: BitmapDescriptor.defaultMarkerWithHue(
+                                  BitmapDescriptor.hueCyan),
+                                  onTap: () => _openDetailsForLatLng(coords),
+                              infoWindow:
+                                  const InfoWindow(title: "Searched Location"),
+                            );
+                          });
+
+                          controller.animateCamera(
+                            CameraUpdate.newLatLngZoom(coords, 13),
+                          );
+
+                          if (_origin != null && _destination != null) {
+                            final points = await getPolylinePoints();
+                            generatePolyline(points);
+                          }
+                          await _openDetailsForLatLng(coords);
+                        },
+                      ),
+                    ),
+                    
+                    // nav mode buttons
+                    if (_showModeButtons) 
+                      Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 8.0),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            ElevatedButton(
+                              onPressed: () async {
+                                setState(() {
+                                  _travelMode = "driving";
+                                });
+                                polylines.clear();
+                                final points = await getPolylinePoints();
+                                generatePolyline(points);
+                              },
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: _travelMode == "driving"
+                                    ? Colors.blue
+                                    : Colors.grey[300],
+                                foregroundColor: _travelMode == "driving"
+                                    ? Colors.white
+                                    : Colors.black,
+                              ),
+                              child: const Text("Car"),
+                            ),
+                            const SizedBox(width: 8),
+                            ElevatedButton(
+                              onPressed: () async {
+                                setState(() {
+                                  _travelMode = "bicycling";
+                                });
+                                polylines.clear();
+                                final points = await getPolylinePoints();
+                                generatePolyline(points);
+                              },
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: _travelMode == "bicycling"
+                                    ? Colors.blue
+                                    : Colors.grey[300],
+                                foregroundColor: _travelMode == "bicycling"
+                                    ? Colors.white
+                                    : Colors.black,
+                              ),
+                              child: const Text("Bike"),
+                            ),
+                            const SizedBox(width: 8),
+                            ElevatedButton(
+                              onPressed: () async {
+                                setState(() {
+                                  _travelMode = "walking";
+                                });
+                                polylines.clear();
+                                final points = await getPolylinePoints();
+                                generatePolyline(points);
+                              },
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: _travelMode == "walking"
+                                    ? Colors.blue
+                                    : Colors.grey[300],
+                                foregroundColor: _travelMode == "walking"
+                                    ? Colors.white
+                                    : Colors.black,
+                              ),
+                              child: const Text("Walk"),
+                            ),
+                          ],
+                        ),
+                      ),
+                  ]
                 ),
 
                 // Sign-out button
@@ -719,6 +808,7 @@ class _MapPageState extends State<MapPage> {
       ),
       googleApiKey: GOOGLE_MAPS_API_KEY,
     );
+    _showModeButtons = true;
     return result.points.map((p) => LatLng(p.latitude, p.longitude)).toList();
   }
 
@@ -735,9 +825,9 @@ class _MapPageState extends State<MapPage> {
 
   void _cancelRoute() {
     setState(() {
+      _showModeButtons = false;
       _destination = null;
       polylines.clear();
-      // Optionally remove destination marker
       if (_searchMarkerId != null) {
         markers.remove(_searchMarkerId);
         _searchMarkerId = null;
