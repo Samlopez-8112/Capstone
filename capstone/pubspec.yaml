@@ -61,12 +61,17 @@ dependencies:
   # Use with the CupertinoIcons class for iOS style icons.
   cupertino_icons: ^1.0.8
 
+  # for offline download + storage
+  connectivity_plus: ^6.0.5
+  path_provider: ^2.1.3
+  dio: ^5.4.0
+
   # webview to hopefully make ios build pod
   webview_flutter: ^4.13.0
 
   # Adds support for embedding Google Maps in your Flutter app.
   # Requires an API key and platform setup (Android/iOS).
-  google_maps_flutter: ^2.5.3
+  google_maps_flutter: ^2.9.0
   flutter_polyline_points: ^2.1.0
   location: ^5.0.0
 
