@@ -42,6 +42,11 @@ class _MapPageState extends State<MapPage> {
   // fields for crime filter
   // if filter is empty, will show all
   Set<CrimeCategory> _activeFilters = {};
+  int _timeFilterDays = 0;
+  static const int _maxTimeFilterDays = 30;
+
+  // track if user is viewing crimes for filter button
+  bool get _isCrimeViewActive => _lastCrimes.isNotEmpty;
 
   // Cache categories per incident to avoid recomputing every time
   final Map<String, Set<CrimeCategory>> _categoryCache = {};
@@ -163,6 +168,7 @@ class _MapPageState extends State<MapPage> {
                 ),
 
                 // Filter icon
+                if (_isCrimeViewActive)
                 Positioned(
                   top: 168, right: 16,
                   child: Material(
@@ -1731,15 +1737,28 @@ Future<List<CrimeIncident>> _fetchCrimeometerIncidents({
 
   // Returns a list of incidents that match filter
   // If no filter is applied, returns the list as it was
-  List<CrimeIncident> _applyFilters(List<CrimeIncident> all) {
-    if (_activeFilters.isEmpty) return all;
-    return all.where((c) {
+List<CrimeIncident> _applyFilters(List<CrimeIncident> all) {
+  var cur = all;
+
+  // time filter
+  // return crimes that have occured after (now - timeframe)
+  if (_timeFilterDays > 0) {
+    final cutoff = DateTime.now().toUtc().subtract(Duration(days: _timeFilterDays));
+    cur = cur.where((c) => c.occurredAt.isAfter(cutoff)).toList();
+  }
+
+  // category filter
+  // if any category selected matches, add to list
+  // this allows for selection of multiple categories
+  if (_activeFilters.isNotEmpty) {
+    cur = cur.where((c) {
       final cats = _catsFor(c);
-      // If "any" category selected matches, add to list
-      // this allows for selection of multiple categories
       return cats.any(_activeFilters.contains);
     }).toList();
   }
+
+  return cur;
+}
 
   /// Display map markers as defined by the filter
   /// If the filter is empty, all are displayed (see _applyFilters)
@@ -1779,15 +1798,28 @@ Future<List<CrimeIncident>> _fetchCrimeometerIncidents({
   Future<void> _showCrimeFilterSheet() async {
     // Snapshot current selection
     final local = Set<CrimeCategory>.from(_activeFilters);
+    int localDays = _timeFilterDays; //grab date from slider bar for filter
 
-    // Counts the amount of offenses in a category
-    // for display beside selections
-    Map<CrimeCategory, int> counts = {};
-    for (final c in _lastCrimes) {
-      for (final cat in _catsFor(c)) {
-        counts[cat] = (counts[cat] ?? 0) + 1;
+    // Helper to display amount of crimes with time selection
+    Map<CrimeCategory, int> computeCounts() {
+      // Apply time filter only, before category filter
+      final base = () {
+        if (localDays <= 0) return _lastCrimes;
+        final cutoff = DateTime.now().toUtc().subtract(Duration(days: localDays));
+        return _lastCrimes.where((c) => c.occurredAt.isAfter(cutoff)).toList();
+      }();
+
+      //count crimes per category from crimes within timeframe
+      final map = <CrimeCategory, int>{};
+      for (final c in base) {
+        for (final cat in _catsFor(c)) {
+          map[cat] = (map[cat] ?? 0) + 1;
+        }
       }
+      return map;
     }
+
+    Map<CrimeCategory, int> counts = computeCounts();
 
     // label on button, category name + amount in area
     String label(CrimeCategory cat, String text) {
@@ -1803,7 +1835,7 @@ Future<List<CrimeIncident>> _fetchCrimeometerIncidents({
         return StatefulBuilder(builder: (ctx, setLocal) {
           Widget chip(CrimeCategory cat, String text) {
             final sel = local.contains(cat);
-            // display options as chips with label
+            // options are instances of FilterChips 
             return FilterChip(
               label: Text(label(cat, text)),
               selected: sel,
@@ -1816,6 +1848,9 @@ Future<List<CrimeIncident>> _fetchCrimeometerIncidents({
             );
           }
 
+          // Label for date and time slider
+          String daysLabel(int d) => d == 0 ? 'All time' : 'Last $d day${d == 1 ? "" : "s"}';
+
           // Visual for filter popup
           return Padding(
             padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
@@ -1825,8 +1860,26 @@ Future<List<CrimeIncident>> _fetchCrimeometerIncidents({
               children: [
                 const Text('Filter crimes', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600)),
                 const SizedBox(height: 12),
+
+                // Slider for days since filter
+                Text('Timeframe: ${daysLabel(localDays)}', style: const TextStyle(fontWeight: FontWeight.w500)),
+                Slider(
+                  value: localDays.toDouble(),
+                  min: 0,
+                  max: _maxTimeFilterDays.toDouble(),
+                  divisions: _maxTimeFilterDays,
+                  label: daysLabel(localDays),
+                  onChanged: (v) {
+                    setLocal(() {
+                      localDays = v.round();
+                      counts = computeCounts(); // refresh counts as the slider moves
+                    });
+                  },
+                ),
+                const SizedBox(height: 8),
+
+                // chips for each category
                 Wrap(
-                  // labels for each chip
                   spacing: 8, runSpacing: 8,
                   children: [
                     chip(CrimeCategory.violent, 'Violent'),
@@ -1837,15 +1890,17 @@ Future<List<CrimeIncident>> _fetchCrimeometerIncidents({
                     chip(CrimeCategory.other, 'Other'),
                   ],
                 ),
+
                 const SizedBox(height: 12),
                 Row(
                   children: [
-                    // reset filters button, (clears filters list and re-renders markers)
+                    // reset filters button, (clears filters list and renders markers)
                     TextButton(
                       onPressed: () {
                         Navigator.pop(ctx);
                         setState(() {
                           _activeFilters.clear();
+                          _timeFilterDays = 0; // reset timeframe
                         });
                         _renderFilteredCrimes();
                       },
@@ -1858,6 +1913,7 @@ Future<List<CrimeIncident>> _fetchCrimeometerIncidents({
                         Navigator.pop(ctx);
                         setState(() {
                           _activeFilters = local;
+                          _timeFilterDays = localDays; // commit timeframe
                         });
                         _renderFilteredCrimes();
                       },
@@ -1873,36 +1929,37 @@ Future<List<CrimeIncident>> _fetchCrimeometerIncidents({
     );
   }
 
-  // AI Assistant reccomended this method for 'jittering' when markers are atop eachother
-  // Tried it out, looks more appealing than without
 
-  //track how many markers occur at nearly the same coords
-  final Map<String, int> _coordHitCounts = {};
+    // AI Assistant reccomended this method for 'jittering' when markers are atop eachother
+    // Tried it out, looks more appealing than without
 
-  // if two markers occur on the same coords, count a 'hit' and adjust marker
-  LatLng _jitterIfDuplicate(LatLng pos) {
-    // Round so very close points are considered the same for stacking purposes.
-    final key = '${pos.latitude.toStringAsFixed(5)},${pos.longitude.toStringAsFixed(5)}';
-    final hit = (_coordHitCounts[key] ?? 0);
-    _coordHitCounts[key] = hit + 1;
+    //track how many markers occur at nearly the same coords
+    final Map<String, int> _coordHitCounts = {};
 
-    if (hit == 0) return pos; // first marker stays exact
+    // if two markers occur on the same coords, count a 'hit' and adjust marker
+    LatLng _jitterIfDuplicate(LatLng pos) {
+      // Round so very close points are considered the same for stacking purposes.
+      final key = '${pos.latitude.toStringAsFixed(5)},${pos.longitude.toStringAsFixed(5)}';
+      final hit = (_coordHitCounts[key] ?? 0);
+      _coordHitCounts[key] = hit + 1;
 
-    // Spread overlapping pins in small rings around the original point.
-    const double stepMeters = 6.0;                  // ≈6 m between rings
-    final ring = 1 + (hit ~/ 6);                    // 6 markers per ring
-    final slot = hit % 6;                           // position within the ring [0..5]
-    final angle = (slot / 6.0) * 2 * math.pi;
+      if (hit == 0) return pos; // first marker stays exact
 
-    final rMeters = stepMeters * ring;
+      // Spread overlapping pins in small rings around the original point.
+      const double stepMeters = 6.0;                  // ≈6 m between rings
+      final ring = 1 + (hit ~/ 6);                    // 6 markers per ring
+      final slot = hit % 6;                           // position within the ring [0..5]
+      final angle = (slot / 6.0) * 2 * math.pi;
 
-    // meters → degrees
-    final dLat = rMeters / 111_111.0;
-    final dLon = rMeters / (111_111.0 * math.cos(pos.latitude * math.pi / 180));
+      final rMeters = stepMeters * ring;
 
-    return LatLng(
-      pos.latitude  + dLat * math.sin(angle),
-      pos.longitude + dLon * math.cos(angle),
-    );
-  }
+      // meters → degrees
+      final dLat = rMeters / 111_111.0;
+      final dLon = rMeters / (111_111.0 * math.cos(pos.latitude * math.pi / 180));
+
+      return LatLng(
+        pos.latitude  + dLat * math.sin(angle),
+        pos.longitude + dLon * math.cos(angle),
+      );
     }
+      }
