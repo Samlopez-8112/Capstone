@@ -11,6 +11,11 @@ class SettingsScreen extends StatefulWidget {
   State<SettingsScreen> createState() => _SettingsScreenState();
 }
 
+//default slider values
+double _drivingSliderValue = 1;
+double _bikingSliderValue = 3;
+double _walkingSliderValue = 4;
+
 class _SettingsScreenState extends State<SettingsScreen> {
   final _auth = FirebaseAuth.instance;
   final _formKey = GlobalKey<FormState>();
@@ -119,8 +124,36 @@ class _SettingsScreenState extends State<SettingsScreen> {
               /*TextFormField(
                 controller: _phoneController,
                 decoration: const InputDecoration(labelText: 'Phone Number (+1234567890)'),
-              ),*/
-              /*ElevatedButton.icon(
+              ),
+
+              const SizedBox(height: 24),
+              Text(
+                "Safety Tolerances",
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+              ),
+
+              // driving slider
+              SliderPreference(
+                label: "Driving Safety Level",
+                value: _drivingSliderValue,
+                onChanged: (val) => setState(() => _drivingSliderValue = val),
+              ),
+
+              // biking slider
+              SliderPreference(
+                label: "biking Safety Level",
+                value: _bikingSliderValue,
+                onChanged: (val) => setState(() => _bikingSliderValue = val),
+              ),
+
+              // walking slider
+              SliderPreference(
+                label: "Walking Safety Level",
+                value: _walkingSliderValue,
+                onChanged: (val) => setState(() => _walkingSliderValue = val),
+              ),
+
+              ElevatedButton.icon(
                 icon: const Icon(Icons.phone),
                 label: const Text('Link Phone for MFA'),
                 onPressed: _linkPhoneNumber,
@@ -222,5 +255,36 @@ class _SettingsScreenState extends State<SettingsScreen> {
     },
   );
   return smsCode;
-}*/
+}
+}
+
+class SliderPreference extends StatelessWidget {
+  final String label;
+  final double value;
+  final ValueChanged<double> onChanged;
+
+  const SliderPreference({
+    Key? key,
+    required this.label,
+    required this.value,
+    required this.onChanged,
+  }) : super(key: key);
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(label, style: const TextStyle(fontWeight: FontWeight.w500)),
+        Slider(
+          value: value,
+          min: 1,
+          max: 5,
+          divisions: 4, // makes ticks at 1–5
+          label: value.round().toString(),
+          onChanged: onChanged,
+        ),
+      ],
+    );
+  }
 }
