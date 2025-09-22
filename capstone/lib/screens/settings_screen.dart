@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../services/encryption_service.dart';
-import '../offline_maps/offline_maps_page';
+import '../offline_maps/offline_maps_page.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
