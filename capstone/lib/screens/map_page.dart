@@ -960,6 +960,7 @@ class _MapPageState extends State<MapPage> {
 
   void _cancelRoute() {
     setState(() {
+      _isSidebarOpen = false;
       _showModeButtons = false;
       _destination = null;
       _steps = [];

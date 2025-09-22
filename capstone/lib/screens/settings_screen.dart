@@ -23,7 +23,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   late TextEditingController _displayNameController;
   late TextEditingController _emailController;
   late TextEditingController _passwordController;
-  //TextEditingController _phoneController = TextEditingController();
+  TextEditingController _phoneController = TextEditingController();
 
   bool _loading = false;
 
@@ -121,7 +121,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   return null;
                 },
               ),
-              /*TextFormField(
+              TextFormField(
                 controller: _phoneController,
                 decoration: const InputDecoration(labelText: 'Phone Number (+1234567890)'),
               ),
@@ -157,7 +157,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 icon: const Icon(Icons.phone),
                 label: const Text('Link Phone for MFA'),
                 onPressed: _linkPhoneNumber,
-              ),*/
+              ),
               const SizedBox(height: 24),
               ElevatedButton.icon(
                 icon: const Icon(Icons.save),
@@ -195,7 +195,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       ),
     );
   }
-  /*void _linkPhoneNumber() async {
+void _linkPhoneNumber() async {
     final phone = _phoneController.text.trim();
       if (phone.isEmpty) return;
 
@@ -228,9 +228,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
         },
         codeAutoRetrievalTimeout: (_) {},
       );
-  }*/
+  }
 
-  /*Future<String?> _askUserForSmsCode() async {
+  Future<String?> _askUserForSmsCode() async {
     String? smsCode;
       await showDialog(
       context: context,
