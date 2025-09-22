@@ -90,13 +90,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(title: const Text('Settings')),
-      body: Padding(
+      body: SafeArea(
+      child: SingleChildScrollView(
         padding: const EdgeInsets.all(16.0),
-        child: _loading
-        ? const Center(child: CircularProgressIndicator())
-        : Form(
-          key: _formKey,
-          child: Column(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               TextFormField(
                 controller: _displayNameController,
