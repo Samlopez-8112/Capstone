@@ -8,7 +8,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_polyline_points/flutter_polyline_points.dart';
 import 'package:flutter_speed_dial/flutter_speed_dial.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
-import 'package:location/location.dart';
+import 'package:location/location.dart' hide LocationAccuracy;
 import 'package:url_launcher/url_launcher.dart';
 import '../consts.dart';
 import '../models/poi_category.dart';
@@ -18,6 +18,10 @@ import 'friend_screen.dart';
 import '../models/crime_incident.dart';
 //import '../services/crime_fixture_data_source.dart';
 import '../models/crime_severity.dart';
+import 'dart:convert';
+import 'package:http/http.dart' as http;
+import 'package:flutter_tts/flutter_tts.dart';
+import 'package:geolocator/geolocator.dart';
 import '../utils/location_permissions.dart';
 import '../services/crimeometer_service.dart';
 import '../utils/crimefilter.dart';
@@ -72,6 +76,11 @@ class _MapPageState extends State<MapPage> {
   MarkerId? _searchMarkerId;
   String _travelMode = "driving";
   bool _showModeButtons = false;
+  List<Map<String, dynamic>> _steps = [];
+  final FlutterTts flutterTts = FlutterTts();
+  StreamSubscription<Position>? _positionStream;
+  int _currentStepIndex = 0;
+  bool _isSidebarOpen = false;
 
   // Nearby search state
   double _searchRadius = 2000;
@@ -98,12 +107,31 @@ class _MapPageState extends State<MapPage> {
       getPolylinePoints().then(generatePolyline);
     });
     fixPinnedLocationData();
+
+    // Listen for location updates
+    final locationSettings = LocationSettings(
+      accuracy: LocationAccuracy.bestForNavigation,
+      distanceFilter: 10, // meters before triggering update
+    );
+
+    _positionStream = Geolocator.getPositionStream(locationSettings: locationSettings)
+        .listen((Position position) {
+      setState(() {
+        _origin = LatLng(position.latitude, position.longitude);
+      });
+
+      // Recalculate route with new origin
+      if (_destination != null) {
+        _createRoute();
+      }
+    });
   }
 
   @override
   void dispose() {
     _boundsDebounce?.cancel();
     _ratingsSub?.cancel();
+    _positionStream?.cancel();
     super.dispose();
   }
 
@@ -201,129 +229,250 @@ class _MapPageState extends State<MapPage> {
                   ),
                 ),
 
-                // Search bar and route buttons
-                Column(
-                  children: [
-                    // search bar
-                    Positioned(
-                      top: 50,
-                      left: 15,
-                      right: 15,
-                      child: AutocompleteSearchBar(
-                        onSuggestionSelected: (LatLng coords) async {
-                          final controller = await _mapController.future;
-                          setState(() {
-                            isFollowingUser = false;
-                            _destination = coords;
+                // Filter icon
+                if (_isCrimeViewActive)
+                Positioned(
+                  top: 168, right: 16,
+                  child: Material(
+                    color: Colors.white,
+                    elevation: 2,
+                    shape: const CircleBorder(),
+                    child: IconButton(
+                      icon: const Icon(Icons.filter_alt_outlined),
+                      tooltip: 'Filter crimes',
+                      onPressed: _showCrimeFilterSheet,
+                    ),
+                  ),
+                ),
 
-                            // remove previous search marker if it exists
-                            if (_searchMarkerId != null) {
-                              markers.remove(_searchMarkerId);
-                            }
+                // Filter icon
+                if (_isCrimeViewActive)
+                Positioned(
+                  top: 168, right: 16,
+                  child: Material(
+                    color: Colors.white,
+                    elevation: 2,
+                    shape: const CircleBorder(),
+                    child: IconButton(
+                      icon: const Icon(Icons.filter_alt_outlined),
+                      tooltip: 'Filter crimes',
+                      onPressed: _showCrimeFilterSheet,
+                    ),
+                  ),
+                ),
 
-                            final markerId = const MarkerId("search_temp");
-                            _searchMarkerId = markerId;
+                // search bar
+                Positioned(
+                  top: 15,
+                  left: 5,
+                  right: 5,
+                  child: AutocompleteSearchBar(
+                    onSuggestionSelected: (LatLng coords) async {
+                      final controller = await _mapController.future;
+                      setState(() {
+                        isFollowingUser = false;
+                        _destination = coords;
 
-                            markers[markerId] = Marker(
-                              markerId: markerId,
-                              position: coords,
-                              icon: BitmapDescriptor.defaultMarkerWithHue(
-                                  BitmapDescriptor.hueCyan),
-                                  onTap: () => _openDetailsForLatLng(coords),
-                              infoWindow:
-                                  const InfoWindow(title: "Searched Location"),
-                            );
-                          });
+                        // remove previous search marker if it exists
+                        if (_searchMarkerId != null) {
+                          markers.remove(_searchMarkerId);
+                        }
 
-                          controller.animateCamera(
-                            CameraUpdate.newLatLngZoom(coords, 13),
-                          );
+                        final markerId = const MarkerId("search_temp");
+                        _searchMarkerId = markerId;
 
-                          if (_origin != null && _destination != null) {
-                            final points = await getPolylinePoints();
-                            generatePolyline(points);
-                          }
-                          await _openDetailsForLatLng(coords);
-                        },
+                        markers[markerId] = Marker(
+                          markerId: markerId,
+                          position: coords,
+                          icon: BitmapDescriptor.defaultMarkerWithHue(
+                              BitmapDescriptor.hueCyan),
+                              onTap: () => _openDetailsForLatLng(coords),
+                          infoWindow:
+                              const InfoWindow(title: "Searched Location"),
+                        );
+                      });
+
+                      controller.animateCamera(
+                        CameraUpdate.newLatLngZoom(coords, 13),
+                      );
+
+                      if (_origin != null && _destination != null) {
+                        _createRoute();
+                      }
+                      await _openDetailsForLatLng(coords);
+                    },
+                  ),
+                ),
+
+                // route mode buttons
+                if (_showModeButtons) 
+                  Positioned(
+                    top: 80,
+                    left: 15,
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        ElevatedButton(
+                          onPressed: () async {
+                            setState(() {
+                              _travelMode = "driving";
+                            });
+                            _createRoute();
+                          },
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: _travelMode == "driving"
+                                ? Colors.blue
+                                : Colors.grey[300],
+                            foregroundColor: _travelMode == "driving"
+                                ? Colors.white
+                                : Colors.black,
+                          ),
+                          child: const Text("Car"),
+                        ),
+                        const SizedBox(width: 8),
+                        ElevatedButton(
+                          onPressed: () async {
+                            setState(() {
+                              _travelMode = "bicycling";
+                            });
+                            _createRoute();
+                          },
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: _travelMode == "bicycling"
+                                ? Colors.blue
+                                : Colors.grey[300],
+                            foregroundColor: _travelMode == "bicycling"
+                                ? Colors.white
+                                : Colors.black,
+                          ),
+                          child: const Text("Bike"),
+                        ),
+                        const SizedBox(width: 8),
+                        ElevatedButton(
+                          onPressed: () async {
+                            setState(() {
+                              _travelMode = "walking";
+                            });
+                            _createRoute();
+                          },
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: _travelMode == "walking"
+                                ? Colors.blue
+                                : Colors.grey[300],
+                            foregroundColor: _travelMode == "walking"
+                                ? Colors.white
+                                : Colors.black,
+                          ),
+                          child: const Text("Walk"),
+                        ),
+                      ],
+                    ),
+                  ),
+
+                // cancel route button
+                if (_destination != null)
+                  Positioned(
+                    top: 135,
+                    left: 15,
+                    child: FloatingActionButton(
+                      heroTag: "cancelRouteBtn",
+                      backgroundColor: Colors.red,
+                      onPressed: _cancelRoute,
+                      child: const Icon(Icons.close),
+                    ),
+                  ),
+
+                // Sidebar panel
+                AnimatedPositioned(
+                  duration: const Duration(milliseconds: 300),
+                  curve: Curves.easeInOut,
+                  top: 200,
+                  bottom: 210,
+                  left: _isSidebarOpen ? 0 : -250, // slides in/out
+                  child: Container(
+                    width: 225,
+                    color: Colors.white,
+                    child: SafeArea(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Padding(
+                            padding: EdgeInsets.all(10.0),
+                            child: Text(
+                              "Turn-by-Turn Directions",
+                              style: TextStyle(
+                                fontSize: 18,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ),
+                          Expanded(
+                            child: _steps.isEmpty
+                                ? const Center(child: Text("No route loaded"))
+                                : ListView.builder(
+                                    itemCount: _steps.length,
+                                    itemBuilder: (context, index) {
+                                      final step = _steps[index];
+                                      return ListTile(
+                                        leading: Icon(
+                                          Icons.directions,
+                                          color: index == _currentStepIndex
+                                              ? Colors.blue
+                                              : Colors.grey,
+                                        ),
+                                        title: Text(
+                                          _stripHtml(step['instruction']),
+                                          style: TextStyle(
+                                            fontWeight: index == _currentStepIndex
+                                                ? FontWeight.bold
+                                                : FontWeight.normal,
+                                            color: index == _currentStepIndex
+                                                ? Colors.blue
+                                                : Colors.black,
+                                          ),
+                                        ),
+                                        subtitle: Text(
+                                          "${step['distance']} • ${step['duration']}",
+                                        ),
+                                        onTap: () {
+                                          _speakStep(step['instruction']);
+                                          setState(() {
+                                            _currentStepIndex = index;
+                                          });
+                                        },
+                                      );
+                                    },
+                                  ),
+                          ),
+                        ],
                       ),
                     ),
-                    
-                    // nav mode buttons
-                    if (_showModeButtons) 
-                      Padding(
-                        padding: const EdgeInsets.symmetric(vertical: 8.0),
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            ElevatedButton(
-                              onPressed: () async {
-                                setState(() {
-                                  _travelMode = "driving";
-                                });
-                                polylines.clear();
-                                final points = await getPolylinePoints();
-                                generatePolyline(points);
-                              },
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: _travelMode == "driving"
-                                    ? Colors.blue
-                                    : Colors.grey[300],
-                                foregroundColor: _travelMode == "driving"
-                                    ? Colors.white
-                                    : Colors.black,
-                              ),
-                              child: const Text("Car"),
-                            ),
-                            const SizedBox(width: 8),
-                            ElevatedButton(
-                              onPressed: () async {
-                                setState(() {
-                                  _travelMode = "bicycling";
-                                });
-                                polylines.clear();
-                                final points = await getPolylinePoints();
-                                generatePolyline(points);
-                              },
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: _travelMode == "bicycling"
-                                    ? Colors.blue
-                                    : Colors.grey[300],
-                                foregroundColor: _travelMode == "bicycling"
-                                    ? Colors.white
-                                    : Colors.black,
-                              ),
-                              child: const Text("Bike"),
-                            ),
-                            const SizedBox(width: 8),
-                            ElevatedButton(
-                              onPressed: () async {
-                                setState(() {
-                                  _travelMode = "walking";
-                                });
-                                polylines.clear();
-                                final points = await getPolylinePoints();
-                                generatePolyline(points);
-                              },
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: _travelMode == "walking"
-                                    ? Colors.blue
-                                    : Colors.grey[300],
-                                foregroundColor: _travelMode == "walking"
-                                    ? Colors.white
-                                    : Colors.black,
-                              ),
-                              child: const Text("Walk"),
-                            ),
-                          ],
-                        ),
-                      ),
-                  ]
+                  ),
                 ),
+
+                // Navigation list button
+                if (_destination != null)
+                  Positioned(
+                    top: 135,
+                    left: 80,
+                    child: FloatingActionButton(
+                      heroTag: "TBTNavBtn",
+                      backgroundColor: Colors.white,
+                      foregroundColor: Colors.black,
+                      onPressed: () {
+                        setState(() {
+                          _isSidebarOpen = !_isSidebarOpen;
+                        });
+                      },
+                      child: const Icon(Icons.turn_right),
+                    ),
+                      
+                    ),
 
                 // Sign-out button
                 Positioned(
-                  top: 110,
-                  right: 15,
+                  top: 80,
+                  right: 10,
                   child: ElevatedButton(
                     style: ElevatedButton.styleFrom(
                       backgroundColor: Colors.white,
@@ -332,6 +481,22 @@ class _MapPageState extends State<MapPage> {
                     ),
                     onPressed: () => FirebaseAuth.instance.signOut(),
                     child: const Icon(Icons.logout),
+                  ),
+                ),
+
+                // Settings (gear)
+                Positioned(
+                  top: 120,
+                  right: 5,
+                  child: IconButton(
+                    icon: const Icon(Icons.settings),
+                    onPressed: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                            builder: (_) => const SettingsScreen()),
+                      );
+                    },
                   ),
                 ),
 
@@ -371,7 +536,7 @@ class _MapPageState extends State<MapPage> {
 
                 // Speed dial: nearby search by category
                 Positioned(
-                  bottom: 90,
+                  bottom: 75,
                   left: 20,
                   child: SpeedDial(
                     icon: Icons.place,
@@ -477,7 +642,7 @@ class _MapPageState extends State<MapPage> {
 
                 // Show location-sharing friends
                 Positioned(
-                  bottom: 160,
+                  bottom: 140,
                   left: 20,
                   child: FloatingActionButton(
                     onPressed: _showSharingFriends,
@@ -501,42 +666,12 @@ class _MapPageState extends State<MapPage> {
                     },
                   ),
                 ),
-
-                // cancel route button
-                if (_destination != null)
-                  Positioned(
-                    top: 115,
-                    left: 15,
-                    child: FloatingActionButton(
-                      heroTag: "cancelRouteBtn",
-                      backgroundColor: Colors.red,
-                      onPressed: _cancelRoute,
-                      child: const Icon(Icons.close),
-                    ),
-                  ),
-
-                // Settings (gear)
-                Positioned(
-                  top: 40,
-                  left: 10,
-                  child: IconButton(
-                    icon: const Icon(Icons.settings),
-                    onPressed: () {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                            builder: (_) => const SettingsScreen()),
-                      );
-                    },
-                  ),
-                ),
               ],
             ),
     );
   }
 
   //Heatmap helpers (viewport streaming, color/intensity, details)
-
   void _scheduleBoundsRefresh() {
     _boundsDebounce?.cancel();
     _boundsDebounce =
@@ -821,18 +956,84 @@ class _MapPageState extends State<MapPage> {
       points: coordinates,
     );
     setState(() {});
-  }
+  }  
 
   void _cancelRoute() {
     setState(() {
       _showModeButtons = false;
       _destination = null;
+      _steps = [];
       polylines.clear();
       if (_searchMarkerId != null) {
         markers.remove(_searchMarkerId);
         _searchMarkerId = null;
       }
     });
+  }
+
+// fetch route + step instructions
+Future<List<Map<String, dynamic>>> _getDirectionsWithSteps(
+  double originLat,
+  double originLng,
+  double destLat,
+  double destLng,
+  String mode,
+) async {
+  final url = Uri.parse(
+    'https://maps.googleapis.com/maps/api/directions/json'
+    '?origin=$originLat,$originLng'
+    '&destination=$destLat,$destLng'
+    '&mode=$mode'
+    '&key=$GOOGLE_MAPS_API_KEY',
+  );
+
+  final response = await http.get(url);
+
+  if (response.statusCode == 200) {
+    final data = jsonDecode(response.body);
+
+    final steps = data['routes'][0]['legs'][0]['steps'] as List;
+
+    return steps.map((s) => {
+      'instruction': s['html_instructions'],
+      'distance': s['distance']['text'],
+      'duration': s['duration']['text'],
+      'start': s['start_location'],
+      'end': s['end_location'],
+    }).toList();
+  } else {
+    throw Exception('Failed to load directions');
+  }
+}
+
+Future<void> _createRoute() async {
+  //generate route
+  final points = await getPolylinePoints();
+  generatePolyline(points);
+
+  // fetch step-by-step directions
+  final steps = await _getDirectionsWithSteps(
+    _origin!.latitude,
+    _origin!.longitude,
+    _destination!.latitude,
+    _destination!.longitude,
+    _travelMode,
+  );
+
+  setState(() {
+    _showModeButtons = true;
+    _steps = steps;
+  });
+}
+
+// text-to-speech
+Future<void> _speakStep(String text) async {
+  await flutterTts.speak(_stripHtml(text));
+}
+
+  // helper to remove <b> tags etc. from Google instructions
+  String _stripHtml(String htmlText) {
+    return htmlText.replaceAll(RegExp(r'<[^>]*>'), '');
   }
 
   // POIs / Places 
