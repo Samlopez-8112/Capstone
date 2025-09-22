@@ -1,4 +1,6 @@
 import 'dart:async';
+import 'dart:convert';
+import 'dart:io';
 import 'dart:math';
 import 'package:capstone/screens/settings_screen.dart';
 import 'package:capstone/screens/CrowdSource_page.dart';
@@ -10,6 +12,8 @@ import 'package:flutter_speed_dial/flutter_speed_dial.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:location/location.dart' hide LocationAccuracy;
 import 'package:url_launcher/url_launcher.dart';
+import 'package:connectivity_plus/connectivity_plus.dart';
+import 'package:path_provider/path_provider.dart';
 import '../consts.dart';
 import '../models/poi_category.dart';
 import '../services/places_service.dart';
@@ -26,7 +30,7 @@ import '../utils/location_permissions.dart';
 import '../services/crimeometer_service.dart';
 import '../utils/crimefilter.dart';
 import 'dart:math' as math;
-
+import '../offline_maps/offline_maps_page.dart';
 
 
 class MapPage extends StatefulWidget {
@@ -57,6 +61,27 @@ class _MapPageState extends State<MapPage> {
 
   // save crimes currently rendered
   List<CrimeIncident> _lastRenderedCrimes = [];
+
+
+  Future<void> _maybeOpenOfflineIfNoInternet() async {
+  final initial = await Connectivity().checkConnectivity();
+  if (mounted && initial == ConnectivityResult.none) {
+    Navigator.of(context).pushReplacement(
+      MaterialPageRoute(builder: (_) => const OfflineMapsPage()),
+    );
+    return;
+  }
+
+  Connectivity().onConnectivityChanged.listen((result) {
+    if (!mounted) return;
+    if (result == ConnectivityResult.none) {
+      Navigator.of(context).push(
+        MaterialPageRoute(builder: (_) => const OfflineMapsPage()),
+      );
+    }
+  });
+}
+
 
 
   // Crime overlay
@@ -101,6 +126,7 @@ class _MapPageState extends State<MapPage> {
   @override
   void initState() {
     super.initState();
+      _maybeOpenOfflineIfNoInternet(); // check connectivity and open offline map if none
       _checkUserAuthentication();
       _initLocationDependentFeatures();
       getLocationUpdates().then((_) {
@@ -1097,6 +1123,9 @@ Future<void> _speakStep(String text) async {
         radius: _searchRadius.round(),
       );
 
+      // NEW: cache results for offline mode
+      await _cachePOIs(category, results);
+
       setState(() {
         _lastFetchedPOIs = results;
         markers.removeWhere(
@@ -1130,6 +1159,26 @@ Future<void> _speakStep(String text) async {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Failed to fetch ${category.label} nearby')),
       );
+    }
+  }
+
+  // Save POIs to disk for offline use (same folder structure OfflineMapsPage reads)
+  Future<void> _cachePOIs(
+    PoiCategory category,
+    List<Map<String, dynamic>> pois,
+  ) async {
+    try {
+      final dir = await getApplicationSupportDirectory();
+      final offlineDir = Directory('${dir.path}/offline/pois');
+      await offlineDir.create(recursive: true);
+
+      // keep a file per category near current location for simplicity
+      final file = File('${offlineDir.path}/pois_${category.name}.json');
+      await file.writeAsString(json.encode({'pois': pois}));
+
+      debugPrint('Cached ${pois.length} ${category.label} POIs -> ${file.path}');
+    } catch (e) {
+      debugPrint('Failed to cache POIs: $e');
     }
   }
 
