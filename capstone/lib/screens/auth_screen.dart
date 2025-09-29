@@ -115,6 +115,7 @@ Bypassr Security Team
 } catch (e, stack) {
   print("Auth error: $e");
   print(stack);
+  if(!mounted) return;
   setState(() => error = e.toString());
 }
 

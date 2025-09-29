@@ -31,6 +31,7 @@ import '../services/crimeometer_service.dart';
 import '../utils/crimefilter.dart';
 import 'dart:math' as math;
 import '../offline_maps/offline_maps_page.dart';
+import '../services/heatmap_logic.dart';
 
 
 class MapPage extends StatefulWidget {
@@ -115,10 +116,7 @@ class _MapPageState extends State<MapPage> {
   static LatLng? _destination;
 
   // Heatmap state 
-  final Set<Circle> _heatCircles = {};
-  bool _showHeatmap = true;
-  Timer? _boundsDebounce;
-  StreamSubscription<QuerySnapshot<Map<String, dynamic>>>? _ratingsSub;
+  final HeatmapManager _heatmap = HeatmapManager();
 
   // maps each circleId to rating doc fields for the details bottom sheet
   final Map<CircleId, Map<String, dynamic>> _circleMeta = {};
@@ -142,6 +140,7 @@ class _MapPageState extends State<MapPage> {
 
     _positionStream = Geolocator.getPositionStream(locationSettings: locationSettings)
         .listen((Position position) {
+      if(!mounted) return;
       setState(() {
         _origin = LatLng(position.latitude, position.longitude);
       });
@@ -155,8 +154,7 @@ class _MapPageState extends State<MapPage> {
 
   @override
   void dispose() {
-    _boundsDebounce?.cancel();
-    _ratingsSub?.cancel();
+    _heatmap.dispose();
     _positionStream?.cancel();
     super.dispose();
   }
@@ -212,15 +210,15 @@ class _MapPageState extends State<MapPage> {
                   myLocationEnabled: true,
                   markers: Set<Marker>.of(markers.values),
                   polylines: Set<Polyline>.of(polylines.values),
-                  circles: _showHeatmap ? _heatCircles : {},
+                  circles: _heatmap.showHeatmap ? _heatmap.circles : {},
                   onMapCreated: (controller) {
                     _mapController.complete(controller);
-                    _scheduleBoundsRefresh();
+                    _heatmap.scheduleBoundsRefresh(_mapController.future, () => setState(() {}));
                   },
-                  onCameraMove: (_) => _scheduleBoundsRefresh(),
-                  onCameraIdle: _refreshHeatForViewport,
+                  onCameraMove: (_) => _heatmap.scheduleBoundsRefresh(_mapController.future, () => setState(() {})),
+                  onCameraIdle: () => _heatmap.refreshHeatForViewport(_mapController.future, () => setState(() {})),
                   onLongPress: _onMapLongPress,
-                  onTap: _onMapTap,
+                  onTap: (pos) => _heatmap.handleMapTap(context, pos),
                 ),
 
                 // Filter icon
@@ -621,22 +619,22 @@ class _MapPageState extends State<MapPage> {
 
                 // Heatmap toggle
                 Positioned(
-                  bottom: 200,
+                  bottom: 160,
                   right: 20,
                   child: FloatingActionButton(
                     heroTag: 'heatToggle',
                     mini: true,
                     onPressed: () {
-                      setState(() => _showHeatmap = !_showHeatmap);
-                      if (_showHeatmap) {
-                        _scheduleBoundsRefresh();
+                      setState(() => _heatmap.showHeatmap = !_heatmap.showHeatmap);
+                      if (_heatmap.showHeatmap) {
+                        _heatmap.scheduleBoundsRefresh(_mapController.future, () => setState(() {}));
                       } else {
-                        _ratingsSub?.cancel();
-                        setState(() => _heatCircles.clear());
+                        _heatmap.dispose();
+                        setState(() {});
                       }
                     },
                     child: Icon(
-                        _showHeatmap ? Icons.visibility : Icons.visibility_off),
+                        _heatmap.showHeatmap ? Icons.visibility : Icons.visibility_off),
                   ),
                 ),
 
@@ -675,243 +673,11 @@ class _MapPageState extends State<MapPage> {
                     child: const Icon(Icons.people),
                   ),
                 ),
-
-                // Community Rating (CrowdSource) screen button
-                Positioned(
-                  bottom: 150,
-                  right: 20,
-                  child: ElevatedButton.icon(
-                    icon: const Icon(Icons.shield_outlined),
-                    label: const Text("Rating"),
-                    onPressed: () {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                            builder: (context) => const RateAreaScreen()),
-                      );
-                    },
-                  ),
-                ),
               ],
             ),
     );
   }
 
-  //Heatmap helpers (viewport streaming, color/intensity, details)
-  void _scheduleBoundsRefresh() {
-    _boundsDebounce?.cancel();
-    _boundsDebounce =
-        Timer(const Duration(milliseconds: 250), _refreshHeatForViewport);
-  }
-
-  Future<void> _refreshHeatForViewport() async {
-    if (!_showHeatmap) return;
-
-    final controller = await _mapController.future;
-
-    LatLngBounds bounds;
-    try {
-      bounds = await controller.getVisibleRegion();
-    } catch (_) {
-      return;
-    }
-
-    final north = max(bounds.northeast.latitude, bounds.southwest.latitude);
-    final south = min(bounds.northeast.latitude, bounds.southwest.latitude);
-    final east = max(bounds.northeast.longitude, bounds.southwest.longitude);
-    final west = min(bounds.northeast.longitude, bounds.southwest.longitude);
-
-    _ratingsSub?.cancel();
-    _ratingsSub = FirebaseFirestore.instance
-        .collectionGroup('ratings')
-        .where('center.lat', isGreaterThanOrEqualTo: south)
-        .where('center.lat', isLessThanOrEqualTo: north)
-        .orderBy('center.lat')
-        .limit(1500)
-        .snapshots()
-        .listen((snap) {
-      final now = DateTime.now();
-      final Set<Circle> circles = {};
-      final Map<CircleId, Map<String, dynamic>> meta = {};
-
-      for (final doc in snap.docs) {
-        final d = doc.data();
-        final lat = (d['center']?['lat'] as num?)?.toDouble();
-        final lng = (d['center']?['lng'] as num?)?.toDouble();
-        final rating = (d['rating'] as num?)?.toDouble();
-        final radiusMi = (d['radiusMiles'] as num?)?.toDouble() ?? 0.5;
-        final ts = (d['timestamp'] as Timestamp?)?.toDate();
-
-        if (lat == null || lng == null || rating == null) continue;
-
-        // client-side longitude filter
-        if (lng < west || lng > east) continue;
-
-        // weight lower safety => higher intensity with time decay
-        final base = (5.0 - rating).clamp(0.0, 4.0); // 5 = safer
-        final ageDays = ts == null ? 0.0 : now.difference(ts).inHours / 24.0;
-        const halfLifeDays = 60.0; // newer reports weigh more
-        final decay = pow(0.5, ageDays / halfLifeDays).toDouble(); // 1..0
-        final intensity = (base * decay) / 4.0; // normalize 0..1
-
-        if (intensity <= 0.02) continue;
-
-        // circle radius in meters (cap for perf/visuals)
-        final kernel = (radiusMi * 1609.34 * 0.35).clamp(80.0, 450.0);
-        final id = CircleId(
-            '${lat.toStringAsFixed(5)},${lng.toStringAsFixed(5)}_${doc.id}');
-
-        circles.add(
-          Circle(
-            circleId: id,
-            center: LatLng(lat, lng),
-            radius: kernel,
-            strokeWidth: 0,
-            fillColor: _colorForIntensity(intensity),
-          ),
-        );
-
-        meta[id] = {
-          'rating': rating,
-          'reasons': d['reasons'],
-          'personalExperienceDetail': d['personalExperienceDetail'],
-          'timestamp': ts,
-          'radiusMiles': radiusMi,
-          'center': {'lat': lat, 'lng': lng},
-        };
-      }
-
-      setState(() {
-        _heatCircles
-          ..clear()
-          ..addAll(circles);
-        _circleMeta
-          ..clear()
-          ..addAll(meta);
-      });
-    }, onError: (e) {
-      debugPrint('Heatmap stream error: $e');
-    });
-  }
-
-  Color _colorForIntensity(double t) {
-    t = t.clamp(0.0, 1.0);
-    Color lerp(Color a, Color b, double x) =>
-        Color.lerp(a, b, x.clamp(0, 1))!;
-
-    // gradient green -> yellow -> red
-    final Color col = t < 0.5
-        ? lerp(Colors.green.shade400, Colors.yellow.shade600, t / 0.5)
-        : lerp(Colors.yellow.shade600, Colors.red.shade800, (t - 0.5) / 0.5);
-
-    final alpha = (40 + (t * 120)).round(); // 40..160 alpha
-    return col.withAlpha(alpha);
-  }
-
-  void _onMapTap(LatLng pos) {
-    if (!_showHeatmap || _heatCircles.isEmpty) return;
-
-    // find circles that contain the tap (distance is radius)
-    final matches = _heatCircles.where((c) {
-      final d =
-          _calculateDistanceMeters(pos, c.center.latitude, c.center.longitude);
-      return d <= c.radius;
-    }).toList();
-
-    if (matches.isEmpty) return;
-
-    // prefer the closest center to the tap
-    matches.sort((a, b) {
-      final da = _calculateDistanceMeters(
-          pos, a.center.latitude, a.center.longitude);
-      final db = _calculateDistanceMeters(
-          pos, b.center.latitude, b.center.longitude);
-      return da.compareTo(db);
-    });
-
-    final CircleId id = matches.first.circleId;
-    final data = _circleMeta[id];
-    if (data != null) _showRatingDetailsSheet(data);
-  }
-
-  void _showRatingDetailsSheet(Map<String, dynamic> d) {
-    final List reasons = (d['reasons'] as List?) ?? const [];
-    final String? detail = (d['personalExperienceDetail'] as String?)?.trim();
-    final double? rating = (d['rating'] as num?)?.toDouble();
-    final double? radiusMi = (d['radiusMiles'] as num?)?.toDouble();
-    final DateTime? ts = d['timestamp'] is Timestamp
-        ? (d['timestamp'] as Timestamp).toDate()
-        : d['timestamp'] as DateTime?;
-
-    showModalBottomSheet(
-      context: context,
-      showDragHandle: true,
-      builder: (_) => Padding(
-        padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
-        child: SingleChildScrollView(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(children: [
-                const Icon(Icons.shield_outlined),
-                const SizedBox(width: 8),
-                Text('Community rating',
-                    style: Theme.of(context).textTheme.titleMedium),
-                const Spacer(),
-                if (rating != null)
-                  Row(children: [
-                    const Icon(Icons.star, size: 18, color: Colors.amber),
-                    const SizedBox(width: 4),
-                    Text(rating.toStringAsFixed(1)),
-                  ]),
-              ]),
-              const SizedBox(height: 8),
-              if (radiusMi != null)
-                Text('Reported radius: ${radiusMi.toStringAsFixed(2)} mi',
-                    style: Theme.of(context).textTheme.bodySmall),
-              if (ts != null)
-                Text('Updated: ${ts.toLocal()}',
-                    style: Theme.of(context)
-                        .textTheme
-                        .bodySmall
-                        ?.copyWith(color: Colors.grey[600])),
-
-              const SizedBox(height: 12),
-              Text('Reasons', style: Theme.of(context).textTheme.labelLarge),
-              const SizedBox(height: 8),
-              if (reasons.isEmpty)
-                const Text('No reasons provided')
-              else
-                Wrap(
-                  spacing: 8,
-                  runSpacing: 8,
-                  children: reasons
-                      .map<Widget>((r) => Chip(label: Text(r.toString())))
-                      .toList(),
-                ),
-
-              if (detail != null && detail.isNotEmpty) ...[
-                const SizedBox(height: 12),
-                Text('Personal experience',
-                    style: Theme.of(context).textTheme.labelLarge),
-                const SizedBox(height: 6),
-                Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    color: Colors.grey.shade100,
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: Text(detail),
-                ),
-              ],
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-  
   Future<void> _initLocationDependentFeatures() async {
   final granted = await requestLocationPermission(context);
   debugPrint("Location permission granted: $granted");
@@ -932,6 +698,7 @@ class _MapPageState extends State<MapPage> {
     }
 
     _location.onLocationChanged.listen((loc) {
+      if(!mounted) return;
       debugPrint("Got location update: ${loc.latitude}, ${loc.longitude}");
       if (loc.latitude != null && loc.longitude != null) {
         final pos = LatLng(loc.latitude!, loc.longitude!);
@@ -1501,6 +1268,19 @@ Future<void> _speakStep(String text) async {
                 // show the draggable radius sheet
                 _showCrimeRadiusSheet();
               },),
+              ListTile(
+                leading: const Icon(Icons.star_rate_outlined),
+                title: const Text('Rate this area'),
+                onTap: () {
+                  Navigator.pop(context); //close modal
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => RateAreaScreen(pos: pos)
+                    ),
+                  );
+                }
+              ),
               const Divider(height: 0),
               ListTile(
                 leading: const Icon(Icons.close),

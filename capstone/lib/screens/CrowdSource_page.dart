@@ -3,9 +3,12 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:google_maps_flutter/google_maps_flutter.dart';
 
 class RateAreaScreen extends StatefulWidget {
-  const RateAreaScreen({Key? key}) : super(key: key);
+  final LatLng? pos;
+
+  const RateAreaScreen({Key? key, this.pos}) : super(key: key);
 
   @override
   State<RateAreaScreen> createState() => _RateAreaScreenState();
@@ -21,6 +24,16 @@ class _RateAreaScreenState extends State<RateAreaScreen> {
     'Loitering',
     'Graffiti/vandalism',
     'Poor lighting',
+    'Suspicious activity',
+    'Reports of crime',
+    'Clean and maintained',
+    'Security cameras',
+    'Poor lighting',
+    'Active neighborhood watch',
+    'Nearby schools or parks',
+    'Frequent police sirens',
+    'Abandoned buildings',
+    'Shops open late',
     'Personal experience',
   ];
 
@@ -29,6 +42,19 @@ class _RateAreaScreenState extends State<RateAreaScreen> {
   double _radiusMiles = 0.5;          // 0 – 2 miles
   double _rating = 3;                 // 1 – 5
   final Set<String> _selectedReasons = {};
+
+  @override
+  void initState(){
+    super.initState();
+
+    //if a location is passed from the map long-press, set it immediately
+    if(widget.pos != null){
+      _selectedPin = {
+        'lat': widget.pos!.latitude,
+        'lng': widget.pos!.longitude,
+      };
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
