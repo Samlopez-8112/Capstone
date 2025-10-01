@@ -1,3 +1,5 @@
+// lib/screens/map_page.dart
+
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
@@ -22,6 +24,7 @@ import 'friend_screen.dart';
 import '../models/crime_incident.dart';
 //import '../services/crime_fixture_data_source.dart';
 import '../models/crime_severity.dart';
+// This import is duplicated, but kept as requested to not change original code.
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:flutter_tts/flutter_tts.dart';
@@ -31,6 +34,7 @@ import '../services/crimeometer_service.dart';
 import '../utils/crimefilter.dart';
 import 'dart:math' as math;
 import '../offline_maps/offline_maps_page.dart';
+import '../services/construction_service.dart';
 import '../services/heatmap_logic.dart';
 
 
@@ -115,11 +119,14 @@ class _MapPageState extends State<MapPage> {
   static LatLng? _origin;
   static LatLng? _destination;
 
-  // Heatmap state 
+  // Heatmap state (Now managed by HeatmapManager)
   final HeatmapManager _heatmap = HeatmapManager();
 
-  // maps each circleId to rating doc fields for the details bottom sheet
-  final Map<CircleId, Map<String, dynamic>> _circleMeta = {};
+  // Construction zone state variables
+  final ConstructionService _constructionService = ConstructionService();
+  StreamSubscription<List<Map<String, dynamic>>>? _constructionSub;
+  Set<Circle> _constructionCircles = {};
+  Set<Polygon> _constructionPolygons = {};
 
   @override
   void initState() {
@@ -131,8 +138,11 @@ class _MapPageState extends State<MapPage> {
       getPolylinePoints().then(generatePolyline);
     });
     fixPinnedLocationData();
+    
+    // Start listening for construction zone updates
+    _listenForConstructionZones();
 
-    // Listen for location updates
+    // Listen for user location updates
     final locationSettings = LocationSettings(
       accuracy: LocationAccuracy.bestForNavigation,
       distanceFilter: 10, // meters before triggering update
@@ -140,7 +150,6 @@ class _MapPageState extends State<MapPage> {
 
     _positionStream = Geolocator.getPositionStream(locationSettings: locationSettings)
         .listen((Position position) {
-      if(!mounted) return;
       setState(() {
         _origin = LatLng(position.latitude, position.longitude);
       });
@@ -154,7 +163,9 @@ class _MapPageState extends State<MapPage> {
 
   @override
   void dispose() {
+    // Correctly dispose all subscriptions and managers
     _heatmap.dispose();
+    _constructionSub?.cancel();
     _positionStream?.cancel();
     super.dispose();
   }
@@ -200,482 +211,549 @@ class _MapPageState extends State<MapPage> {
               ],
             ),
           )
-          : Stack(
-              children: [
-                GoogleMap(
-                  initialCameraPosition: CameraPosition(
-                    target: _currentPosition!,
-                    zoom: 13,
-                  ),
-                  myLocationEnabled: true,
-                  markers: Set<Marker>.of(markers.values),
-                  polylines: Set<Polyline>.of(polylines.values),
-                  circles: _heatmap.showHeatmap ? _heatmap.circles : {},
-                  onMapCreated: (controller) {
-                    _mapController.complete(controller);
-                    _heatmap.scheduleBoundsRefresh(_mapController.future, () => setState(() {}));
-                  },
-                  onCameraMove: (_) => _heatmap.scheduleBoundsRefresh(_mapController.future, () => setState(() {})),
-                  onCameraIdle: () => _heatmap.refreshHeatForViewport(_mapController.future, () => setState(() {})),
-                  onLongPress: _onMapLongPress,
-                  onTap: (pos) => _heatmap.handleMapTap(context, pos),
+        : Stack(
+            children: [
+              GoogleMap(
+                initialCameraPosition: CameraPosition(
+                  target: _currentPosition!,
+                  zoom: 13,
                 ),
+                myLocationEnabled: true,
+                markers: Set<Marker>.of(markers.values),
+                polylines: Set<Polyline>.of(polylines.values),
+                circles: _heatmap.showHeatmap
+                    ? {..._heatmap.circles, ..._constructionCircles}
+                    : _constructionCircles,
+                polygons: _constructionPolygons,
+                onMapCreated: (controller) {
+                  _mapController.complete(controller);
+                  _heatmap.scheduleBoundsRefresh(_mapController.future, () => setState(() {}));
+                },
+                onCameraMove: (_) => _heatmap.scheduleBoundsRefresh(_mapController.future, () => setState(() {})),
+                onCameraIdle: () => _heatmap.refreshHeatForViewport(_mapController.future, () => setState(() {})),
+                onLongPress: _onMapLongPress,
+                onTap: (pos) => _heatmap.handleMapTap(context, pos, _currentPosition ?? pos),
+              ),
 
-                // Filter icon
-                if (_isCrimeViewActive)
-                Positioned(
-                  top: 168, right: 16,
-                  child: Material(
-                    color: Colors.white,
-                    elevation: 2,
-                    shape: const CircleBorder(),
-                    child: IconButton(
-                      icon: const Icon(Icons.filter_alt_outlined),
-                      tooltip: 'Filter crimes',
-                      onPressed: _showCrimeFilterSheet,
-                    ),
-                  ),
-                ),
-
-                // Filter icon
-                if (_isCrimeViewActive)
-                Positioned(
-                  top: 168, right: 16,
-                  child: Material(
-                    color: Colors.white,
-                    elevation: 2,
-                    shape: const CircleBorder(),
-                    child: IconButton(
-                      icon: const Icon(Icons.filter_alt_outlined),
-                      tooltip: 'Filter crimes',
-                      onPressed: _showCrimeFilterSheet,
-                    ),
+              // Filter icon
+              if (_isCrimeViewActive)
+              Positioned(
+                top: 168, right: 16,
+                child: Material(
+                  color: Colors.white,
+                  elevation: 2,
+                  shape: const CircleBorder(),
+                  child: IconButton(
+                    icon: const Icon(Icons.filter_alt_outlined),
+                    tooltip: 'Filter crimes',
+                    onPressed: _showCrimeFilterSheet,
                   ),
                 ),
+              ),
 
-                // Filter icon
-                if (_isCrimeViewActive)
-                Positioned(
-                  top: 168, right: 16,
-                  child: Material(
-                    color: Colors.white,
-                    elevation: 2,
-                    shape: const CircleBorder(),
-                    child: IconButton(
-                      icon: const Icon(Icons.filter_alt_outlined),
-                      tooltip: 'Filter crimes',
-                      onPressed: _showCrimeFilterSheet,
-                    ),
-                  ),
-                ),
+              // search bar
+              Positioned(
+                top: 15,
+                left: 5,
+                right: 5,
+                child: AutocompleteSearchBar(
+                  onSuggestionSelected: (LatLng coords) async {
+                    final controller = await _mapController.future;
+                    setState(() {
+                      isFollowingUser = false;
+                      _destination = coords;
 
-                // Filter icon
-                if (_isCrimeViewActive)
-                Positioned(
-                  top: 168, right: 16,
-                  child: Material(
-                    color: Colors.white,
-                    elevation: 2,
-                    shape: const CircleBorder(),
-                    child: IconButton(
-                      icon: const Icon(Icons.filter_alt_outlined),
-                      tooltip: 'Filter crimes',
-                      onPressed: _showCrimeFilterSheet,
-                    ),
-                  ),
-                ),
-
-                // search bar
-                Positioned(
-                  top: 15,
-                  left: 5,
-                  right: 5,
-                  child: AutocompleteSearchBar(
-                    onSuggestionSelected: (LatLng coords) async {
-                      final controller = await _mapController.future;
-                      setState(() {
-                        isFollowingUser = false;
-                        _destination = coords;
-
-                        // remove previous search marker if it exists
-                        if (_searchMarkerId != null) {
-                          markers.remove(_searchMarkerId);
-                        }
-
-                        final markerId = const MarkerId("search_temp");
-                        _searchMarkerId = markerId;
-
-                        markers[markerId] = Marker(
-                          markerId: markerId,
-                          position: coords,
-                          icon: BitmapDescriptor.defaultMarkerWithHue(
-                              BitmapDescriptor.hueCyan),
-                              onTap: () => _openDetailsForLatLng(coords),
-                          infoWindow:
-                              const InfoWindow(title: "Searched Location"),
-                        );
-                      });
-
-                      controller.animateCamera(
-                        CameraUpdate.newLatLngZoom(coords, 13),
-                      );
-
-                      if (_origin != null && _destination != null) {
-                        _createRoute();
+                      // remove previous search marker if it exists
+                      if (_searchMarkerId != null) {
+                        markers.remove(_searchMarkerId);
                       }
-                      await _openDetailsForLatLng(coords);
-                    },
+
+                      final markerId = const MarkerId("search_temp");
+                      _searchMarkerId = markerId;
+
+                      markers[markerId] = Marker(
+                        markerId: markerId,
+                        position: coords,
+                        icon: BitmapDescriptor.defaultMarkerWithHue(
+                            BitmapDescriptor.hueCyan),
+                            onTap: () => _openDetailsForLatLng(coords),
+                        infoWindow:
+                            const InfoWindow(title: "Searched Location"),
+                      );
+                    });
+
+                    controller.animateCamera(
+                      CameraUpdate.newLatLngZoom(coords, 13),
+                    );
+
+                    if (_origin != null && _destination != null) {
+                      _createRoute();
+                    }
+                    await _openDetailsForLatLng(coords);
+                  },
+                ),
+              ),
+
+              // route mode buttons
+              if (_showModeButtons) 
+                Positioned(
+                  top: 80,
+                  left: 15,
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      ElevatedButton(
+                        onPressed: () async {
+                          setState(() {
+                            _travelMode = "driving";
+                          });
+                          _createRoute();
+                        },
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: _travelMode == "driving"
+                              ? Colors.blue
+                              : Colors.grey[300],
+                          foregroundColor: _travelMode == "driving"
+                              ? Colors.white
+                              : Colors.black,
+                        ),
+                        child: const Text("Car"),
+                      ),
+                      const SizedBox(width: 8),
+                      ElevatedButton(
+                        onPressed: () async {
+                          setState(() {
+                            _travelMode = "bicycling";
+                          });
+                          _createRoute();
+                        },
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: _travelMode == "bicycling"
+                              ? Colors.blue
+                              : Colors.grey[300],
+                          foregroundColor: _travelMode == "bicycling"
+                              ? Colors.white
+                              : Colors.black,
+                        ),
+                        child: const Text("Bike"),
+                      ),
+                      const SizedBox(width: 8),
+                      ElevatedButton(
+                        onPressed: () async {
+                          setState(() {
+                            _travelMode = "walking";
+                          });
+                          _createRoute();
+                        },
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: _travelMode == "walking"
+                              ? Colors.blue
+                              : Colors.grey[300],
+                          foregroundColor: _travelMode == "walking"
+                              ? Colors.white
+                              : Colors.black,
+                        ),
+                        child: const Text("Walk"),
+                      ),
+                    ],
                   ),
                 ),
 
-                // route mode buttons
-                if (_showModeButtons) 
-                  Positioned(
-                    top: 80,
-                    left: 15,
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
+              // cancel route button
+              if (_destination != null)
+                Positioned(
+                  top: 135,
+                  left: 15,
+                  child: FloatingActionButton(
+                    heroTag: "cancelRouteBtn",
+                    backgroundColor: Colors.red,
+                    onPressed: _cancelRoute,
+                    child: const Icon(Icons.close),
+                  ),
+                ),
+
+              // Sidebar panel
+              AnimatedPositioned(
+                duration: const Duration(milliseconds: 300),
+                curve: Curves.easeInOut,
+                top: 200,
+                bottom: 210,
+                left: _isSidebarOpen ? 0 : -250, // slides in/out
+                child: Container(
+                  width: 225,
+                  color: Colors.white,
+                  child: SafeArea(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        ElevatedButton(
-                          onPressed: () async {
-                            setState(() {
-                              _travelMode = "driving";
-                            });
-                            _createRoute();
-                          },
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: _travelMode == "driving"
-                                ? Colors.blue
-                                : Colors.grey[300],
-                            foregroundColor: _travelMode == "driving"
-                                ? Colors.white
-                                : Colors.black,
+                        const Padding(
+                          padding: EdgeInsets.all(10.0),
+                          child: Text(
+                            "Turn-by-Turn Directions",
+                            style: TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.bold,
+                            ),
                           ),
-                          child: const Text("Car"),
                         ),
-                        const SizedBox(width: 8),
-                        ElevatedButton(
-                          onPressed: () async {
-                            setState(() {
-                              _travelMode = "bicycling";
-                            });
-                            _createRoute();
-                          },
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: _travelMode == "bicycling"
-                                ? Colors.blue
-                                : Colors.grey[300],
-                            foregroundColor: _travelMode == "bicycling"
-                                ? Colors.white
-                                : Colors.black,
-                          ),
-                          child: const Text("Bike"),
-                        ),
-                        const SizedBox(width: 8),
-                        ElevatedButton(
-                          onPressed: () async {
-                            setState(() {
-                              _travelMode = "walking";
-                            });
-                            _createRoute();
-                          },
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: _travelMode == "walking"
-                                ? Colors.blue
-                                : Colors.grey[300],
-                            foregroundColor: _travelMode == "walking"
-                                ? Colors.white
-                                : Colors.black,
-                          ),
-                          child: const Text("Walk"),
+                        Expanded(
+                          child: _steps.isEmpty
+                              ? const Center(child: Text("No route loaded"))
+                              : ListView.builder(
+                                  itemCount: _steps.length,
+                                  itemBuilder: (context, index) {
+                                    final step = _steps[index];
+                                    return ListTile(
+                                      leading: Icon(
+                                        Icons.directions,
+                                        color: index == _currentStepIndex
+                                            ? Colors.blue
+                                            : Colors.grey,
+                                      ),
+                                      title: Text(
+                                        _stripHtml(step['instruction']),
+                                        style: TextStyle(
+                                          fontWeight: index == _currentStepIndex
+                                              ? FontWeight.bold
+                                              : FontWeight.normal,
+                                          color: index == _currentStepIndex
+                                              ? Colors.blue
+                                              : Colors.black,
+                                        ),
+                                      ),
+                                      subtitle: Text(
+                                        "${step['distance']} • ${step['duration']}",
+                                      ),
+                                      onTap: () {
+                                        _speakStep(step['instruction']);
+                                        setState(() {
+                                          _currentStepIndex = index;
+                                        });
+                                      },
+                                    );
+                                  },
+                                ),
                         ),
                       ],
                     ),
                   ),
-
-                // cancel route button
-                if (_destination != null)
-                  Positioned(
-                    top: 135,
-                    left: 15,
-                    child: FloatingActionButton(
-                      heroTag: "cancelRouteBtn",
-                      backgroundColor: Colors.red,
-                      onPressed: _cancelRoute,
-                      child: const Icon(Icons.close),
-                    ),
-                  ),
-
-                // Sidebar panel
-                AnimatedPositioned(
-                  duration: const Duration(milliseconds: 300),
-                  curve: Curves.easeInOut,
-                  top: 200,
-                  bottom: 210,
-                  left: _isSidebarOpen ? 0 : -250, // slides in/out
-                  child: Container(
-                    width: 225,
-                    color: Colors.white,
-                    child: SafeArea(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          const Padding(
-                            padding: EdgeInsets.all(10.0),
-                            child: Text(
-                              "Turn-by-Turn Directions",
-                              style: TextStyle(
-                                fontSize: 18,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                          ),
-                          Expanded(
-                            child: _steps.isEmpty
-                                ? const Center(child: Text("No route loaded"))
-                                : ListView.builder(
-                                    itemCount: _steps.length,
-                                    itemBuilder: (context, index) {
-                                      final step = _steps[index];
-                                      return ListTile(
-                                        leading: Icon(
-                                          Icons.directions,
-                                          color: index == _currentStepIndex
-                                              ? Colors.blue
-                                              : Colors.grey,
-                                        ),
-                                        title: Text(
-                                          _stripHtml(step['instruction']),
-                                          style: TextStyle(
-                                            fontWeight: index == _currentStepIndex
-                                                ? FontWeight.bold
-                                                : FontWeight.normal,
-                                            color: index == _currentStepIndex
-                                                ? Colors.blue
-                                                : Colors.black,
-                                          ),
-                                        ),
-                                        subtitle: Text(
-                                          "${step['distance']} • ${step['duration']}",
-                                        ),
-                                        onTap: () {
-                                          _speakStep(step['instruction']);
-                                          setState(() {
-                                            _currentStepIndex = index;
-                                          });
-                                        },
-                                      );
-                                    },
-                                  ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
                 ),
+              ),
 
-                // Navigation list button
-                if (_destination != null)
-                  Positioned(
-                    top: 135,
-                    left: 80,
-                    child: FloatingActionButton(
-                      heroTag: "TBTNavBtn",
-                      backgroundColor: Colors.white,
-                      foregroundColor: Colors.black,
-                      onPressed: () {
-                        setState(() {
-                          _isSidebarOpen = !_isSidebarOpen;
-                        });
-                      },
-                      child: const Icon(Icons.turn_right),
-                    ),
-                      
-                    ),
-
-                // Sign-out button
+              // Navigation list button
+              if (_destination != null)
                 Positioned(
-                  top: 80,
-                  right: 10,
-                  child: ElevatedButton(
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.white,
-                      foregroundColor: Colors.black,
-                      elevation: 4,
-                    ),
-                    onPressed: () => FirebaseAuth.instance.signOut(),
-                    child: const Icon(Icons.logout),
-                  ),
-                ),
-
-                // Settings (gear)
-                Positioned(
-                  top: 120,
-                  right: 5,
-                  child: IconButton(
-                    icon: const Icon(Icons.settings),
-                    onPressed: () {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                            builder: (_) => const SettingsScreen()),
-                      );
-                    },
-                  ),
-                ),
-
-                // Search radius slider (shown when speed dial is open)
-                if (_isDialOpen)
-                  Positioned(
-                    bottom: 160,
-                    left: 20,
-                    right: 20,
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 16, vertical: 10),
-                      decoration: BoxDecoration(
-                        color: Colors.white,
-                        borderRadius: BorderRadius.circular(12),
-                        boxShadow: const [
-                          BoxShadow(blurRadius: 6, color: Colors.black26)
-                        ],
-                      ),
-                      child: Column(
-                        children: [
-                          const Text("Search Radius (m)",
-                              style: TextStyle(fontWeight: FontWeight.bold)),
-                          Slider(
-                            value: _searchRadius,
-                            min: 100,
-                            max: 5000,
-                            divisions: 49,
-                            label: '${_searchRadius.round()}m',
-                            onChanged: (value) =>
-                                setState(() => _searchRadius = value),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-
-                // Speed dial: nearby search by category
-                Positioned(
-                  bottom: 75,
-                  left: 20,
-                  child: SpeedDial(
-                    icon: Icons.place,
-                    activeIcon: Icons.close,
-                    backgroundColor: Colors.blueAccent,
-                    spacing: 12,
-                    onOpen: () => setState(() => _isDialOpen = true),
-                    onClose: () => setState(() => _isDialOpen = false),
-                    children: PoiCategory.values.map((cat) {
-                      return SpeedDialChild(
-                        child: Image.asset(cat.iconPath, height: 24),
-                        label: cat.label,
-                        onTap: () {
-                          setState(() {
-                            isFollowingUser = false;
-                          });
-                          _fetchCategoryPOIs(cat);
-                        },
-                      );
-                    }).toList(),
-                  ),
-                ),
-
-                // Toggle follow user + clear temp overlays
-                Positioned(
-                  bottom: 90,
-                  right: 20,
+                  top: 135,
+                  left: 80,
                   child: FloatingActionButton(
+                    heroTag: "TBTNavBtn",
+                    backgroundColor: Colors.white,
+                    foregroundColor: Colors.black,
                     onPressed: () {
                       setState(() {
-                        isFollowingUser = !isFollowingUser;
-
-                        // Remove temporary search marker if it exists
-                        if (isFollowingUser && _searchMarkerId != null) {
-                          markers.remove(_searchMarkerId);
-                          _searchMarkerId = null;
-                        }
-
-                        // Always remove POIs when returning to self
-                        if (isFollowingUser) {
-                          markers.removeWhere((key, marker) =>
-                              key.value.startsWith('poi_'));
-                              _clearCrimeMarkers(); // clear crime markers as well
-                        }
+                        _isSidebarOpen = !_isSidebarOpen;
                       });
-
-                      if (isFollowingUser && _currentPosition != null) {
-                        _cameraTo(_currentPosition!);
-                      }
                     },
-                    child: Icon(isFollowingUser
-                        ? Icons.my_location
-                        : Icons.location_disabled),
+                    child: const Icon(Icons.turn_right),
                   ),
                 ),
 
-                // Heatmap toggle
+              // Sign-out button
+              Positioned(
+                top: 80,
+                right: 10,
+                child: ElevatedButton(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.white,
+                    foregroundColor: Colors.black,
+                    elevation: 4,
+                  ),
+                  onPressed: () => FirebaseAuth.instance.signOut(),
+                  child: const Icon(Icons.logout),
+                ),
+              ),
+
+              // Settings (gear)
+              Positioned(
+                top: 120,
+                right: 5,
+                child: IconButton(
+                  icon: const Icon(Icons.settings),
+                  onPressed: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                          builder: (_) => const SettingsScreen()),
+                    );
+                  },
+                ),
+              ),
+
+              // Search radius slider (shown when speed dial is open)
+              if (_isDialOpen)
                 Positioned(
                   bottom: 160,
+                  left: 20,
                   right: 20,
-                  child: FloatingActionButton(
-                    heroTag: 'heatToggle',
-                    mini: true,
-                    onPressed: () {
-                      setState(() => _heatmap.showHeatmap = !_heatmap.showHeatmap);
-                      if (_heatmap.showHeatmap) {
-                        _heatmap.scheduleBoundsRefresh(_mapController.future, () => setState(() {}));
-                      } else {
-                        _heatmap.dispose();
-                        setState(() {});
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 16, vertical: 10),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(12),
+                      boxShadow: const [
+                        BoxShadow(blurRadius: 6, color: Colors.black26)
+                      ],
+                    ),
+                    child: Column(
+                      children: [
+                        const Text("Search Radius (m)",
+                            style: TextStyle(fontWeight: FontWeight.bold)),
+                        Slider(
+                          value: _searchRadius,
+                          min: 100,
+                          max: 5000,
+                          divisions: 49,
+                          label: '${_searchRadius.round()}m',
+                          onChanged: (value) =>
+                              setState(() => _searchRadius = value),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+
+              // Speed dial: nearby search by category
+              Positioned(
+                bottom: 75,
+                left: 20,
+                child: SpeedDial(
+                  icon: Icons.place,
+                  activeIcon: Icons.close,
+                  backgroundColor: Colors.blueAccent,
+                  spacing: 12,
+                  onOpen: () => setState(() => _isDialOpen = true),
+                  onClose: () => setState(() => _isDialOpen = false),
+                  children: PoiCategory.values.map((cat) {
+                    return SpeedDialChild(
+                      child: Image.asset(cat.iconPath, height: 24),
+                      label: cat.label,
+                      onTap: () {
+                        setState(() {
+                          isFollowingUser = false;
+                        });
+                        _fetchCategoryPOIs(cat);
+                      },
+                    );
+                  }).toList(),
+                ),
+              ),
+
+              // Toggle follow user + clear temp overlays
+              Positioned(
+                bottom: 90,
+                right: 20,
+                child: FloatingActionButton(
+                  onPressed: () {
+                    setState(() {
+                      isFollowingUser = !isFollowingUser;
+
+                      // Remove temporary search marker if it exists
+                      if (isFollowingUser && _searchMarkerId != null) {
+                        markers.remove(_searchMarkerId);
+                        _searchMarkerId = null;
                       }
-                    },
-                    child: Icon(
-                        _heatmap.showHeatmap ? Icons.visibility : Icons.visibility_off),
-                  ),
-                ),
 
-                // Pinned locations
-                Positioned(
-                  bottom: 20,
-                  right: 20,
-                  child: FloatingActionButton(
-                    onPressed: _showPinnedLocations,
-                    child: const Icon(Icons.bookmark),
-                  ),
-                ),
+                      // Always remove POIs when returning to self
+                      if (isFollowingUser) {
+                        markers.removeWhere((key, marker) =>
+                            key.value.startsWith('poi_'));
+                            _clearCrimeMarkers(); // clear crime markers as well
+                      }
+                    });
 
-                // Friends
-                Positioned(
-                  bottom: 20,
-                  left: 20,
-                  child: ElevatedButton(
-                    onPressed: () {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                            builder: (_) => const FriendScreen()),
-                      );
-                    },
-                    child: const Text("Friends"),
-                  ),
+                    if (isFollowingUser && _currentPosition != null) {
+                      _cameraTo(_currentPosition!);
+                    }
+                  },
+                  child: Icon(isFollowingUser
+                      ? Icons.my_location
+                      : Icons.location_disabled),
                 ),
+              ),
 
-                // Show location-sharing friends
-                Positioned(
-                  bottom: 140,
-                  left: 20,
-                  child: FloatingActionButton(
-                    onPressed: _showSharingFriends,
-                    child: const Icon(Icons.people),
-                  ),
+              // Heatmap toggle
+              Positioned(
+                bottom: 160,
+                right: 20,
+                child: FloatingActionButton(
+                  heroTag: 'heatToggle',
+                  mini: true,
+                  onPressed: () {
+                    setState(() => _heatmap.showHeatmap = !_heatmap.showHeatmap);
+                    if (_heatmap.showHeatmap) {
+                      _heatmap.scheduleBoundsRefresh(_mapController.future, () => setState(() {}));
+                    } else {
+                      _heatmap.clearCircles();
+                      setState(() {});
+                    }
+                  },
+                  child: Icon(
+                      _heatmap.showHeatmap ? Icons.visibility : Icons.visibility_off),
                 ),
-              ],
+              ),
+
+              // Pinned locations
+              Positioned(
+                bottom: 20,
+                right: 20,
+                child: FloatingActionButton(
+                  onPressed: _showPinnedLocations,
+                  child: const Icon(Icons.bookmark),
+                ),
+              ),
+
+              // Friends
+              Positioned(
+                bottom: 20,
+                left: 20,
+                child: ElevatedButton(
+                  onPressed: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                          builder: (_) => const FriendScreen()),
+                    );
+                  },
+                  child: const Text("Friends"),
+                ),
+              ),
+
+              // Show location-sharing friends
+              Positioned(
+                bottom: 140,
+                left: 20,
+                child: FloatingActionButton(
+                  onPressed: _showSharingFriends,
+                  child: const Icon(Icons.people),
+                ),
+              ),
+
+              // Community Rating (CrowdSource) screen button
+              Positioned(
+                bottom: 150,
+                right: 20,
+                child: ElevatedButton.icon(
+                  icon: const Icon(Icons.shield_outlined),
+                  label: const Text("Rating"),
+                  onPressed: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                          builder: (context) => const RateAreaScreen()),
+                    );
+                  },
+                ),
+              ),
+            ],
+          ),
+  );
+  }
+
+  // SARUN: For construction zones. Add the new methods for listening and checking the route.
+  /// Listens to the stream of active construction zones from Firestore.
+  void _listenForConstructionZones() {
+    _constructionSub = _constructionService.getActiveZones().listen((zones) {
+      final Set<Circle> updatedCircles = {};
+      final Set<Polygon> updatedPolygons = {};
+
+      for (var z in zones) {
+        // Check for polygon data first
+        if (z['polygon'] != null && (z['polygon'] as List).isNotEmpty) {
+          updatedPolygons.add(
+            Polygon(
+              polygonId: PolygonId(z['id']),
+              points: (z['polygon'] as List)
+                  .map((p) => LatLng(p['lat'], p['lng']))
+                  .toList(),
+              strokeColor: Colors.orange.shade800,
+              fillColor: Colors.orange.withOpacity(0.3),
+              strokeWidth: 2,
             ),
-    );
+          );
+        }
+        // Fallback to circle if polygon is not available but lat/lng are
+        else if (z['lat'] != null && z['lng'] != null) {
+          updatedCircles.add(
+            Circle(
+              circleId: CircleId(z['id']),
+              center: LatLng(z['lat'], z['lng']),
+              radius: (z['radius'] as double?) ?? 100.0,
+              strokeColor: Colors.orange.shade800,
+              fillColor: Colors.orange.withOpacity(0.3),
+              strokeWidth: 2,
+            ),
+          );
+        }
+      }
+
+      // Update the state to redraw the map with the new overlays
+      if (mounted) {
+        setState(() {
+          _constructionCircles = updatedCircles;
+          _constructionPolygons = updatedPolygons;
+        });
+      }
+
+      // After updating zones, check if the current route is affected.
+      if (polylines.isNotEmpty) {
+        _checkRouteForConstruction();
+      }
+
+    }, onError: (error) {
+      debugPrint("Error listening to construction zones: $error");
+    });
+  }
+
+  /// Checks if the current route polyline intersects with any construction zones.
+  void _checkRouteForConstruction() {
+    if (polylines.isEmpty || _constructionCircles.isEmpty) {
+      return; // No route or no zones to check against
+    }
+
+    final routePoints = polylines.values.first.points;
+    bool intersects = false;
+
+    for (final point in routePoints) {
+      for (final circle in _constructionCircles) {
+        final distance = Geolocator.distanceBetween(
+          point.latitude,
+          point.longitude,
+          circle.center.latitude,
+          circle.center.longitude,
+        );
+        if (distance <= circle.radius) {
+          intersects = true;
+          break;
+        }
+      }
+      if (intersects) break;
+    }
+
+    // (Note: Polygon intersection is more complex and has been omitted for simplicity,
+    // but this handles the primary circle-based zones.)
+
+    if (intersects) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('⚠️ Your route passes through a construction zone.'),
+            backgroundColor: Colors.orange,
+            duration: Duration(seconds: 5),
+          ),
+        );
+      }
+    }
   }
 
   Future<void> _initLocationDependentFeatures() async {
@@ -698,11 +776,12 @@ class _MapPageState extends State<MapPage> {
     }
 
     _location.onLocationChanged.listen((loc) {
-      if(!mounted) return;
       debugPrint("Got location update: ${loc.latitude}, ${loc.longitude}");
       if (loc.latitude != null && loc.longitude != null) {
         final pos = LatLng(loc.latitude!, loc.longitude!);
-        setState(() => _currentPosition = pos);
+        if (mounted) {
+          setState(() => _currentPosition = pos);
+        }
         if (isFollowingUser) _cameraTo(pos);
       }
     });
@@ -713,31 +792,55 @@ class _MapPageState extends State<MapPage> {
     controller.animateCamera(CameraUpdate.newLatLngZoom(pos, 13));
   }
 
+  // SARUN: This is the updated code for traffic-aware routing.
   Future<List<LatLng>> getPolylinePoints() async {
     if (_currentPosition == null) {
       LocationData locationData = await _location.getLocation();
       _currentPosition = LatLng(locationData.latitude!, locationData.longitude!);
     }
-
     _origin = _currentPosition;
-
     if (_destination == null) {
       return [];
     }
+
+    List<LatLng> polylineCoordinates = [];
     
-    final result = await PolylinePoints().getRouteBetweenCoordinates(
-      request: PolylineRequest(
-        origin: PointLatLng(_origin!.latitude, _origin!.longitude),
-        destination: PointLatLng(_destination!.latitude, _destination!.longitude),
-        mode
-          : _travelMode == "driving"? TravelMode.driving
-          : _travelMode == "bicycling"? TravelMode.bicycling
-          : TravelMode.walking //else
-      ),
-      googleApiKey: GOOGLE_MAPS_API_KEY,
+    final url = Uri.parse(
+      'https://maps.googleapis.com/maps/api/directions/json'
+      '?origin=${_origin!.latitude},${_origin!.longitude}'
+      '&destination=${_destination!.latitude},${_destination!.longitude}'
+      '&mode=$_travelMode'
+      '&departure_time=now' // Key parameter for real-time traffic
+      '&key=$GOOGLE_MAPS_API_KEY'
     );
-    _showModeButtons = true;
-    return result.points.map((p) => LatLng(p.latitude, p.longitude)).toList();
+
+    try {
+      final response = await http.get(url);
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        
+        if ((data['routes'] as List).isNotEmpty) {
+          final points = data['routes'][0]['overview_polyline']['points'];
+          polylineCoordinates = PolylinePoints().decodePolyline(points)
+            .map((point) => LatLng(point.latitude, point.longitude))
+            .toList();
+        } else {
+          debugPrint("No routes found: ${data['status']}");
+        }
+      } else {
+        debugPrint("Failed to load directions: ${response.statusCode}");
+      }
+    } catch (e) {
+      debugPrint("Error fetching directions: $e");
+    }
+
+    if(mounted) {
+      setState(() {
+        _showModeButtons = true;
+      });
+    }
+    return polylineCoordinates;
   }
 
   void generatePolyline(List<LatLng> coordinates) {
@@ -748,8 +851,10 @@ class _MapPageState extends State<MapPage> {
       width: 6,
       points: coordinates,
     );
-    setState(() {});
-  }  
+    if (mounted) {
+      setState(() {});
+    }
+  } 
 
   void _cancelRoute() {
     setState(() {
@@ -786,24 +891,31 @@ Future<List<Map<String, dynamic>>> _getDirectionsWithSteps(
   if (response.statusCode == 200) {
     final data = jsonDecode(response.body);
 
-    final steps = data['routes'][0]['legs'][0]['steps'] as List;
-
-    return steps.map((s) => {
-      'instruction': s['html_instructions'],
-      'distance': s['distance']['text'],
-      'duration': s['duration']['text'],
-      'start': s['start_location'],
-      'end': s['end_location'],
-    }).toList();
+    // Add a check to ensure routes are not empty
+    if ((data['routes'] as List).isNotEmpty) {
+      final steps = data['routes'][0]['legs'][0]['steps'] as List;
+      return steps.map((s) => {
+        'instruction': s['html_instructions'],
+        'distance': s['distance']['text'],
+        'duration': s['duration']['text'],
+        'start': s['start_location'],
+        'end': s['end_location'],
+      }).toList();
+    }
   } else {
     throw Exception('Failed to load directions');
   }
+  return []; // Return empty list if no routes or error
 }
 
 Future<void> _createRoute() async {
   //generate route
   final points = await getPolylinePoints();
   generatePolyline(points);
+
+  // Check for construction after generating the polyline
+  _checkRouteForConstruction();
+
 
   // fetch step-by-step directions
   final steps = await _getDirectionsWithSteps(
@@ -814,10 +926,12 @@ Future<void> _createRoute() async {
     _travelMode,
   );
 
-  setState(() {
-    _showModeButtons = true;
-    _steps = steps;
-  });
+  if (mounted) {
+    setState(() {
+      _showModeButtons = true;
+      _steps = steps;
+    });
+  }
 }
 
 // text-to-speech
@@ -1268,19 +1382,6 @@ Future<void> _speakStep(String text) async {
                 // show the draggable radius sheet
                 _showCrimeRadiusSheet();
               },),
-              ListTile(
-                leading: const Icon(Icons.star_rate_outlined),
-                title: const Text('Rate this area'),
-                onTap: () {
-                  Navigator.pop(context); //close modal
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (_) => RateAreaScreen(pos: pos)
-                    ),
-                  );
-                }
-              ),
               const Divider(height: 0),
               ListTile(
                 leading: const Icon(Icons.close),
@@ -1356,7 +1457,7 @@ Future<void> _speakStep(String text) async {
     ).whenComplete(() { //runs on close of the radius bar, cleans up.
     });
   }
-  
+ 
 
     // calculate distance using Haversine formula 
     double _calculateDistanceMeters(
@@ -1375,7 +1476,7 @@ Future<void> _speakStep(String text) async {
     // open Google Maps with selected coordinates
     Future<void> _launchNavigation(double lat, double lng) async {
       final uri = Uri.parse(
-          'https://www.google.com/maps/dir/?api=1&destination=$lat,$lng&travelmode=driving');
+          'https://www.google.com/maps/dir/?api=1&destination=$lat,$lng');
       if (await canLaunchUrl(uri)) {
         await launchUrl(uri, mode: LaunchMode.externalApplication);
       } else {
@@ -1393,13 +1494,6 @@ Future<void> _speakStep(String text) async {
       if (!mounted) return;
       _showPlaceCrimeSheet(center: pos, details: details);
 
-      if (details != null) {
-        // Reuse your existing POI bottom sheet (already renders
-        // address, phone, website, rating, and a Navigate button).
-      } else {
-        // Nothing business-like nearby; show a simple fallback.
-        _showBasicLocationSheet(pos);
-      }
     } catch (e) {
       if (!mounted) return;
       _showBasicLocationSheet(pos);
@@ -1475,7 +1569,7 @@ Future<void> _speakStep(String text) async {
   }) {
     showModalBottomSheet(
       context: context,
-      isScrollControlled: true,      // allows a taller sheet
+      isScrollControlled: true,     // allows a taller sheet
       showDragHandle: true,
       builder: (_) {
         final height = MediaQuery.of(context).size.height * 0.55;
@@ -1745,7 +1839,7 @@ Future<void> _speakStep(String text) async {
     }
   }
 }
- 
+
 // Assisted by ChatGPT, up-to-date method for retrieving data from crimeometer.
 Future<List<CrimeIncident>> _fetchCrimeometerIncidents({
   required LatLng center,
@@ -2071,9 +2165,9 @@ List<CrimeIncident> _applyFilters(List<CrimeIncident> all) {
       if (hit == 0) return pos; // first marker stays exact
 
       // Spread overlapping pins in small rings around the original point.
-      const double stepMeters = 6.0;                  // ≈6 m between rings
-      final ring = 1 + (hit ~/ 6);                    // 6 markers per ring
-      final slot = hit % 6;                           // position within the ring [0..5]
+      const double stepMeters = 6.0;           // ≈6 m between rings
+      final ring = 1 + (hit ~/ 6);            // 6 markers per ring
+      final slot = hit % 6;                  // position within the ring [0..5]
       final angle = (slot / 6.0) * 2 * math.pi;
 
       final rMeters = stepMeters * ring;
@@ -2087,4 +2181,4 @@ List<CrimeIncident> _applyFilters(List<CrimeIncident> all) {
         pos.longitude + dLon * math.cos(angle),
       );
     }
-      }
+}
