@@ -24,8 +24,6 @@ import 'friend_screen.dart';
 import '../models/crime_incident.dart';
 //import '../services/crime_fixture_data_source.dart';
 import '../models/crime_severity.dart';
-// This import is duplicated, but kept as requested to not change original code.
-import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:flutter_tts/flutter_tts.dart';
 import 'package:geolocator/geolocator.dart';
@@ -119,14 +117,15 @@ class _MapPageState extends State<MapPage> {
   static LatLng? _origin;
   static LatLng? _destination;
 
-  // Heatmap state (Now managed by HeatmapManager)
+  // Heatmap state 
   final HeatmapManager _heatmap = HeatmapManager();
-
+  
   // Construction zone state variables
   final ConstructionService _constructionService = ConstructionService();
   StreamSubscription<List<Map<String, dynamic>>>? _constructionSub;
   Set<Circle> _constructionCircles = {};
   Set<Polygon> _constructionPolygons = {};
+
 
   @override
   void initState() {
@@ -150,6 +149,7 @@ class _MapPageState extends State<MapPage> {
 
     _positionStream = Geolocator.getPositionStream(locationSettings: locationSettings)
         .listen((Position position) {
+      if(!mounted) return;
       setState(() {
         _origin = LatLng(position.latitude, position.longitude);
       });
@@ -232,7 +232,7 @@ class _MapPageState extends State<MapPage> {
                 onCameraMove: (_) => _heatmap.scheduleBoundsRefresh(_mapController.future, () => setState(() {})),
                 onCameraIdle: () => _heatmap.refreshHeatForViewport(_mapController.future, () => setState(() {})),
                 onLongPress: _onMapLongPress,
-                onTap: (pos) => _heatmap.handleMapTap(context, pos, _currentPosition ?? pos),
+                onTap: (pos) => _heatmap.handleMapTap(context, pos),
               ),
 
               // Filter icon
@@ -582,26 +582,29 @@ class _MapPageState extends State<MapPage> {
                 ),
               ),
 
-              // Heatmap toggle
-              Positioned(
-                bottom: 160,
-                right: 20,
-                child: FloatingActionButton(
-                  heroTag: 'heatToggle',
-                  mini: true,
-                  onPressed: () {
-                    setState(() => _heatmap.showHeatmap = !_heatmap.showHeatmap);
-                    if (_heatmap.showHeatmap) {
-                      _heatmap.scheduleBoundsRefresh(_mapController.future, () => setState(() {}));
-                    } else {
-                      _heatmap.clearCircles();
-                      setState(() {});
-                    }
-                  },
-                  child: Icon(
-                      _heatmap.showHeatmap ? Icons.visibility : Icons.visibility_off),
-                ),
-              ),
+// Heatmap toggle
+Positioned(
+  bottom: 160,
+  right: 20,
+  child: FloatingActionButton(
+    heroTag: 'heatToggle',
+    mini: true,
+    onPressed: () {
+      setState(() => _heatmap.showHeatmap = !_heatmap.showHeatmap);
+
+      if (_heatmap.showHeatmap) {
+        // When turning the heatmap ON, tell it to start fetching data again.
+        _heatmap.scheduleBoundsRefresh(_mapController.future, () => setState(() {}));
+      } else {
+        // When turning it OFF, call its dispose method to stop the data stream.
+        _heatmap.dispose();
+        setState(() {}); // Redraw the UI without the circles.
+      }
+    },
+    child: Icon(
+        _heatmap.showHeatmap ? Icons.visibility : Icons.visibility_off),
+  ),
+),
 
               // Pinned locations
               Positioned(
@@ -641,7 +644,7 @@ class _MapPageState extends State<MapPage> {
 
               // Community Rating (CrowdSource) screen button
               Positioned(
-                bottom: 150,
+                bottom: 210, // Adjusted position to not overlap
                 right: 20,
                 child: ElevatedButton.icon(
                   icon: const Icon(Icons.shield_outlined),
@@ -660,7 +663,6 @@ class _MapPageState extends State<MapPage> {
   );
   }
 
-  // SARUN: For construction zones. Add the new methods for listening and checking the route.
   /// Listens to the stream of active construction zones from Firestore.
   void _listenForConstructionZones() {
     _constructionSub = _constructionService.getActiveZones().listen((zones) {
@@ -668,7 +670,6 @@ class _MapPageState extends State<MapPage> {
       final Set<Polygon> updatedPolygons = {};
 
       for (var z in zones) {
-        // Check for polygon data first
         if (z['polygon'] != null && (z['polygon'] as List).isNotEmpty) {
           updatedPolygons.add(
             Polygon(
@@ -682,7 +683,6 @@ class _MapPageState extends State<MapPage> {
             ),
           );
         }
-        // Fallback to circle if polygon is not available but lat/lng are
         else if (z['lat'] != null && z['lng'] != null) {
           updatedCircles.add(
             Circle(
@@ -697,7 +697,6 @@ class _MapPageState extends State<MapPage> {
         }
       }
 
-      // Update the state to redraw the map with the new overlays
       if (mounted) {
         setState(() {
           _constructionCircles = updatedCircles;
@@ -705,7 +704,6 @@ class _MapPageState extends State<MapPage> {
         });
       }
 
-      // After updating zones, check if the current route is affected.
       if (polylines.isNotEmpty) {
         _checkRouteForConstruction();
       }
@@ -718,7 +716,7 @@ class _MapPageState extends State<MapPage> {
   /// Checks if the current route polyline intersects with any construction zones.
   void _checkRouteForConstruction() {
     if (polylines.isEmpty || _constructionCircles.isEmpty) {
-      return; // No route or no zones to check against
+      return; 
     }
 
     final routePoints = polylines.values.first.points;
@@ -739,9 +737,6 @@ class _MapPageState extends State<MapPage> {
       }
       if (intersects) break;
     }
-
-    // (Note: Polygon intersection is more complex and has been omitted for simplicity,
-    // but this handles the primary circle-based zones.)
 
     if (intersects) {
       if (mounted) {
@@ -776,12 +771,11 @@ class _MapPageState extends State<MapPage> {
     }
 
     _location.onLocationChanged.listen((loc) {
+      if(!mounted) return;
       debugPrint("Got location update: ${loc.latitude}, ${loc.longitude}");
       if (loc.latitude != null && loc.longitude != null) {
         final pos = LatLng(loc.latitude!, loc.longitude!);
-        if (mounted) {
-          setState(() => _currentPosition = pos);
-        }
+        setState(() => _currentPosition = pos);
         if (isFollowingUser) _cameraTo(pos);
       }
     });
@@ -792,7 +786,7 @@ class _MapPageState extends State<MapPage> {
     controller.animateCamera(CameraUpdate.newLatLngZoom(pos, 13));
   }
 
-  // SARUN: This is the updated code for traffic-aware routing.
+  // This is the updated code for traffic-aware routing.
   Future<List<LatLng>> getPolylinePoints() async {
     if (_currentPosition == null) {
       LocationData locationData = await _location.getLocation();
@@ -1382,6 +1376,19 @@ Future<void> _speakStep(String text) async {
                 // show the draggable radius sheet
                 _showCrimeRadiusSheet();
               },),
+              ListTile(
+                leading: const Icon(Icons.star_rate_outlined),
+                title: const Text('Rate this area'),
+                onTap: () {
+                  Navigator.pop(context); //close modal
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => RateAreaScreen(pos: pos)
+                    ),
+                  );
+                }
+              ),
               const Divider(height: 0),
               ListTile(
                 leading: const Icon(Icons.close),
@@ -1476,7 +1483,7 @@ Future<void> _speakStep(String text) async {
     // open Google Maps with selected coordinates
     Future<void> _launchNavigation(double lat, double lng) async {
       final uri = Uri.parse(
-          'https://www.google.com/maps/dir/?api=1&destination=$lat,$lng');
+          'https://www.google.com/maps/dir/?api=1&destination=$lat,$lng&travelmode=driving');
       if (await canLaunchUrl(uri)) {
         await launchUrl(uri, mode: LaunchMode.externalApplication);
       } else {

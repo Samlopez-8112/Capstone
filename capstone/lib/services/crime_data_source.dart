@@ -1,10 +1,8 @@
-import 'dart:math';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import '../models/crime_incident.dart';
 import 'crimeometer_service.dart';
-import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'crime_fixture_data_source.dart'; 
 
 

@@ -1,13 +1,10 @@
 //Screen for sign-in and create account
 //help from chatgpt
 
-import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import '../services/firestore_service.dart';
 import 'map_page.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'settings_screen.dart';
 import '../services/encryption_service.dart';
 import 'package:device_info_plus/device_info_plus.dart';
 import 'dart:io';
