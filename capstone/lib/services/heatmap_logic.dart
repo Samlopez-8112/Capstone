@@ -18,17 +18,19 @@ class HeatmapManager {
     _boundsDebounce?.cancel();
     _ratingsSub?.cancel();
   }
-  
-  //Devounced refresh
-  void scheduleBoundsRefresh(Future<GoogleMapController> controllerFuture, VoidCallback onUpdate) {
+
+  /// Debounced refresh
+  void scheduleBoundsRefresh(
+      Future<GoogleMapController> controllerFuture, VoidCallback onUpdate) {
     _boundsDebounce?.cancel();
     _boundsDebounce = Timer(const Duration(milliseconds: 250), () {
       refreshHeatForViewport(controllerFuture, onUpdate);
     });
   }
 
-  //Firestore listener per viewpoint
-  Future<void> refreshHeatForViewport(Future<GoogleMapController> controllerFuture, VoidCallback onUpdate) async {
+  /// Firestore listener per viewport
+  Future<void> refreshHeatForViewport(
+      Future<GoogleMapController> controllerFuture, VoidCallback onUpdate) async {
     if (!showHeatmap) return;
     final controller = await controllerFuture;
 
@@ -54,9 +56,9 @@ class HeatmapManager {
         .snapshots()
         .listen((snap) {
       final now = DateTime.now();
-      final Set<Circle> circles = {};
-      final Map<CircleId, Map<String, dynamic>> meta = {};
+      final Map<String, List<Map<String, dynamic>>> grouped = {};
 
+      // Group ratings by lat,lng,radius
       for (final doc in snap.docs) {
         final d = doc.data();
         final lat = (d['center']?['lat'] as num?)?.toDouble();
@@ -68,22 +70,64 @@ class HeatmapManager {
         if (lat == null || lng == null || rating == null) continue;
         if (lng < west || lng > east) continue;
 
-        // intensity calc
-        final base = (5.0 - rating).clamp(0.0, 4.0);
-        final ageDays = ts == null ? 0.0 : now.difference(ts).inHours / 24.0;
+        final key =
+            "${lat.toStringAsFixed(5)},${lng.toStringAsFixed(5)}:r=${radiusMi.toStringAsFixed(2)}";
+        grouped.putIfAbsent(key, () => []).add({
+          'rating': rating,
+          'timestamp': ts,
+          'reasons': d['reasons'],
+          'detail': d['personalExperienceDetail'],
+          'lat': lat,
+          'lng': lng,
+          'radius': radiusMi,
+        });
+      }
+
+      final Set<Circle> circles = {};
+      final Map<CircleId, Map<String, dynamic>> meta = {};
+
+      for (final entry in grouped.entries) {
+        final group = entry.value;
+
+        final lat = group.first['lat'] as double;
+        final lng = group.first['lng'] as double;
+        final radiusMi = group.first['radius'] as double;
+
+        // Average rating
+        final avgRating = group
+                .map((r) => r['rating'] as double)
+                .reduce((a, b) => a + b) /
+            group.length;
+
+        // Latest timestamp
+        final latest = group
+            .map((r) => r['timestamp'] as DateTime?)
+            .whereType<DateTime>()
+            .fold<DateTime?>(null,
+                (a, b) => a == null || b.isAfter(a) ? b : a);
+
+        // Intensity decay by time
         const halfLifeDays = 60.0;
-        final decay = pow(0.5, ageDays / halfLifeDays).toDouble();
+        final decay = latest == null
+            ? 1.0
+            : pow(0.5,
+                    now.difference(latest).inHours / 24.0 / halfLifeDays)
+                .toDouble();
+        final base = (5.0 - avgRating).clamp(0.0, 4.0);
         final intensity = (base * decay) / 4.0;
         if (intensity <= 0.02) continue;
 
-        final kernel = (radiusMi * 1609.34 * 0.25).clamp(80.0, 250.0);
-        final id = CircleId('${lat.toStringAsFixed(5)},${lng.toStringAsFixed(5)}_${doc.id}');
+        // Circle kernel size
+        final kernel =
+            (radiusMi * 1609.34 * 0.25).clamp(80.0, 250.0);
+        final idStr = entry.key;
+        final id = CircleId(idStr);
 
         const int layers = 5;
-        for(int i = 0; i < layers; i++){
+        for (int i = 0; i < layers; i++) {
           final layerRadius = kernel * (1 + i * 0.15);
           final fadeFactor = pow(0.7, i);
-          final layerId = CircleId('$id-layer$i');
+          final layerId = CircleId('${id.value}-layer$i');
 
           circles.add(
             Circle(
@@ -96,13 +140,23 @@ class HeatmapManager {
           );
         }
 
+        // Collect all reasons and details
+        final allReasons = group
+            .expand((r) => (r['reasons'] as List?) ?? [])
+            .toList();
+        final detailList = group
+            .map((r) => r['detail'])
+            .whereType<String>()
+            .toList();
+
         meta[id] = {
-          'rating': rating,
-          'reasons': d['reasons'],
-          'personalExperienceDetail': d['personalExperienceDetail'],
-          'timestamp': ts,
+          'avgRating': avgRating,
+          'reasons': allReasons,
+          'personalExperiences': detailList,
+          'count': group.length,
           'radiusMiles': radiusMi,
           'center': {'lat': lat, 'lng': lng},
+          'timestamp': latest,
         };
       }
 
@@ -117,7 +171,7 @@ class HeatmapManager {
     });
   }
 
-  // Handle tap on map, check if inside a circle
+  /// Handle tap on map → aggregate overlapping clusters
   void handleMapTap(BuildContext context, LatLng pos) {
     if (!showHeatmap || _heatCircles.isEmpty) return;
 
@@ -129,28 +183,66 @@ class HeatmapManager {
 
     if (matches.isEmpty) return;
 
-    matches.sort((a, b) {
-      final da = _calculateDistanceMeters(
-          pos, a.center.latitude, a.center.longitude);
-      final db = _calculateDistanceMeters(
-          pos, b.center.latitude, b.center.longitude);
-      return da.compareTo(db);
-    });
+    // Collect base IDs (strip "-layerX")
+    final baseIds = matches
+        .map((c) => c.circleId.value.contains('-layer')
+            ? c.circleId.value.split('-layer').first
+            : c.circleId.value)
+        .toSet();
 
-    final CircleId id = matches.first.circleId;
-    final data = _circleMeta[id];
-    if (data != null) _showRatingDetailsSheet(context, data);
+    // Gather all data for these base IDs
+    final selectedData = baseIds
+        .map((id) => _circleMeta[CircleId(id)])
+        .whereType<Map<String, dynamic>>()
+        .toList();
+
+    if (selectedData.isEmpty) return;
+
+    // Merge them into one summary
+    final avgRating = selectedData
+            .map((d) => d['avgRating'] as double? ?? 0.0)
+            .reduce((a, b) => a + b) /
+        selectedData.length;
+
+    final totalCount = selectedData
+        .map((d) => d['count'] as int? ?? 0)
+        .reduce((a, b) => a + b);
+
+    final allReasons =
+        selectedData.expand((d) => d['reasons'] as List).toList();
+    final allExperiences =
+        selectedData.expand((d) => d['personalExperiences'] as List).toList();
+
+    // Latest update across all
+    final latest = selectedData
+        .map((d) => d['timestamp'] as DateTime?)
+        .whereType<DateTime>()
+        .fold<DateTime?>(null, (a, b) => a == null || b.isAfter(a) ? b : a);
+
+    _showRatingDetailsSheet(
+      context,
+      avgRating: avgRating,
+      count: totalCount,
+      reasons: allReasons,
+      experiences: allExperiences,
+      timestamp: latest,
+    );
   }
 
-  // Show bottom sheet with rating details
-  void _showRatingDetailsSheet(BuildContext context, Map<String, dynamic> d) {
-    final List reasons = (d['reasons'] as List?) ?? const [];
-    final String? detail = (d['personalExperienceDetail'] as String?)?.trim();
-    final double? rating = (d['rating'] as num?)?.toDouble();
-    final double? radiusMi = (d['radiusMiles'] as num?)?.toDouble();
-    final DateTime? ts = d['timestamp'] is Timestamp
-        ? (d['timestamp'] as Timestamp).toDate()
-        : d['timestamp'] as DateTime?;
+  /// Bottom sheet with aggregated community rating
+  void _showRatingDetailsSheet(
+    BuildContext context, {
+    required double avgRating,
+    required int count,
+    required List reasons,
+    required List experiences,
+    required DateTime? timestamp,
+  }) {
+    // Aggregate reasons with counts
+    final reasonCounts = <String, int>{};
+    for (final r in reasons) {
+      reasonCounts[r.toString()] = (reasonCounts[r.toString()] ?? 0) + 1;
+    }
 
     showModalBottomSheet(
       context: context,
@@ -167,19 +259,16 @@ class HeatmapManager {
                 Text('Community rating',
                     style: Theme.of(context).textTheme.titleMedium),
                 const Spacer(),
-                if (rating != null)
-                  Row(children: [
-                    const Icon(Icons.star, size: 18, color: Colors.amber),
-                    const SizedBox(width: 4),
-                    Text(rating.toStringAsFixed(1)),
-                  ]),
+                Row(children: [
+                  const Icon(Icons.star, size: 18, color: Colors.amber),
+                  const SizedBox(width: 4),
+                  Text(avgRating.toStringAsFixed(1)),
+                ]),
               ]),
-              const SizedBox(height: 8),
-              if (radiusMi != null)
-                Text('Reported radius: ${radiusMi.toStringAsFixed(2)} mi',
-                    style: Theme.of(context).textTheme.bodySmall),
-              if (ts != null)
-                Text('Updated: ${ts.toLocal()}',
+              Text('$count ratings submitted',
+                  style: Theme.of(context).textTheme.bodySmall),
+              if (timestamp != null)
+                Text('Updated: ${timestamp.toLocal()}',
                     style: Theme.of(context)
                         .textTheme
                         .bodySmall
@@ -188,31 +277,32 @@ class HeatmapManager {
               const SizedBox(height: 12),
               Text('Reasons', style: Theme.of(context).textTheme.labelLarge),
               const SizedBox(height: 8),
-              if (reasons.isEmpty)
+              if (reasonCounts.isEmpty)
                 const Text('No reasons provided')
               else
                 Wrap(
                   spacing: 8,
                   runSpacing: 8,
-                  children: reasons
-                      .map<Widget>((r) => Chip(label: Text(r.toString())))
+                  children: reasonCounts.entries
+                      .map((e) => Chip(label: Text('${e.key} (${e.value})')))
                       .toList(),
                 ),
 
-              if (detail != null && detail.isNotEmpty) ...[
+              if (experiences.isNotEmpty) ...[
                 const SizedBox(height: 12),
-                Text('Personal experience',
+                Text('Personal experiences',
                     style: Theme.of(context).textTheme.labelLarge),
                 const SizedBox(height: 6),
-                Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    color: Colors.grey.shade100,
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: Text(detail),
-                ),
+                ...experiences.map((e) => Container(
+                      width: double.infinity,
+                      margin: const EdgeInsets.only(bottom: 8),
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: Colors.grey.shade100,
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Text(e.toString()),
+                    )),
               ],
             ],
           ),
@@ -234,15 +324,16 @@ class HeatmapManager {
     return R * 2 * asin(sqrt(a));
   }
 
-
   Color _colorForIntensity(double t) {
     t = t.clamp(0.0, 1.0);
     Color lerp(Color a, Color b, double x) =>
         Color.lerp(a, b, x.clamp(0, 1))!;
 
     final Color col = t < 0.5
-        ? lerp(Colors.green.shade400, Colors.yellow.shade600, t / 0.5)
-        : lerp(Colors.yellow.shade600, Colors.red.shade800, (t - 0.5) / 0.5);
+        ? lerp(Colors.green.shade400,
+            Colors.yellow.shade600, t / 0.5)
+        : lerp(Colors.yellow.shade600,
+            Colors.red.shade800, (t - 0.5) / 0.5);
 
     final alpha = (40 + (t * 120)).round();
     return col.withAlpha(alpha);
