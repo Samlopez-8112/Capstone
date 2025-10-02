@@ -1,5 +1,3 @@
-// lib/screens/map_page.dart
-
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
@@ -32,9 +30,8 @@ import '../services/crimeometer_service.dart';
 import '../utils/crimefilter.dart';
 import 'dart:math' as math;
 import '../offline_maps/offline_maps_page.dart';
-import '../services/construction_service.dart';
 import '../services/heatmap_logic.dart';
-
+import '../services/construction_service.dart'; // construction zones stream
 
 class MapPage extends StatefulWidget {
   const MapPage({super.key});
@@ -65,27 +62,24 @@ class _MapPageState extends State<MapPage> {
   // save crimes currently rendered
   List<CrimeIncident> _lastRenderedCrimes = [];
 
-
   Future<void> _maybeOpenOfflineIfNoInternet() async {
-  final initial = await Connectivity().checkConnectivity();
-  if (mounted && initial == ConnectivityResult.none) {
-    Navigator.of(context).pushReplacement(
-      MaterialPageRoute(builder: (_) => const OfflineMapsPage()),
-    );
-    return;
-  }
-
-  Connectivity().onConnectivityChanged.listen((result) {
-    if (!mounted) return;
-    if (result == ConnectivityResult.none) {
-      Navigator.of(context).push(
+    final initial = await Connectivity().checkConnectivity();
+    if (mounted && initial == ConnectivityResult.none) {
+      Navigator.of(context).pushReplacement(
         MaterialPageRoute(builder: (_) => const OfflineMapsPage()),
       );
+      return;
     }
-  });
-}
 
-
+    Connectivity().onConnectivityChanged.listen((result) {
+      if (!mounted) return;
+      if (result == ConnectivityResult.none) {
+        Navigator.of(context).push(
+          MaterialPageRoute(builder: (_) => const OfflineMapsPage()),
+        );
+      }
+    });
+  }
 
   // Crime overlay
   // final FixtureCrimeDataSource _crimeSource = FixtureCrimeDataSource(path: 'assets/crime_example.json');  see crime data source service
@@ -117,39 +111,42 @@ class _MapPageState extends State<MapPage> {
   static LatLng? _origin;
   static LatLng? _destination;
 
-  // Heatmap state 
+  // Heatmap state
   final HeatmapManager _heatmap = HeatmapManager();
-  
-  // Construction zone state variables
+
+  // maps each circleId to rating doc fields for the details bottom sheet
+  final Map<CircleId, Map<String, dynamic>> _circleMeta = {};
+
+  // Construction zones (streamed from Firestore)
   final ConstructionService _constructionService = ConstructionService();
   StreamSubscription<List<Map<String, dynamic>>>? _constructionSub;
   Set<Circle> _constructionCircles = {};
   Set<Polygon> _constructionPolygons = {};
 
-
   @override
   void initState() {
     super.initState();
-      _maybeOpenOfflineIfNoInternet(); // check connectivity and open offline map if none
-      _checkUserAuthentication();
-      _initLocationDependentFeatures();
-      getLocationUpdates().then((_) {
+    _maybeOpenOfflineIfNoInternet(); // check connectivity and open offline map if none
+    _checkUserAuthentication();
+    _initLocationDependentFeatures();
+    getLocationUpdates().then((_) {
       getPolylinePoints().then(generatePolyline);
     });
     fixPinnedLocationData();
-    
-    // Start listening for construction zone updates
+
+    // Listen for construction zones
     _listenForConstructionZones();
 
-    // Listen for user location updates
+    // Listen for location updates
     final locationSettings = LocationSettings(
       accuracy: LocationAccuracy.bestForNavigation,
       distanceFilter: 10, // meters before triggering update
     );
 
-    _positionStream = Geolocator.getPositionStream(locationSettings: locationSettings)
-        .listen((Position position) {
-      if(!mounted) return;
+    _positionStream =
+        Geolocator.getPositionStream(locationSettings: locationSettings)
+            .listen((Position position) {
+      if (!mounted) return;
       setState(() {
         _origin = LatLng(position.latitude, position.longitude);
       });
@@ -163,10 +160,9 @@ class _MapPageState extends State<MapPage> {
 
   @override
   void dispose() {
-    // Correctly dispose all subscriptions and managers
     _heatmap.dispose();
-    _constructionSub?.cancel();
     _positionStream?.cancel();
+    _constructionSub?.cancel();
     super.dispose();
   }
 
@@ -181,586 +177,488 @@ class _MapPageState extends State<MapPage> {
 
   @override
   Widget build(BuildContext context) {
-      return Scaffold(
-    body: _currentPosition == null
-        ? Center(
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
+    return Scaffold(
+      body: _currentPosition == null
+          ? Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  const CircularProgressIndicator(),
+                  const SizedBox(height: 16),
+                  const Text(
+                    "Location access is required to display the map.",
+                    textAlign: TextAlign.center,
+                  ),
+                  const SizedBox(height: 12),
+                  ElevatedButton.icon(
+                    icon: const Icon(Icons.location_on),
+                    label: const Text("Grant Location Access"),
+                    onPressed: () async {
+                      final granted =
+                          await requestLocationPermission(context);
+                      if (granted) {
+                        await _initLocationDependentFeatures();
+                      } else {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                              content: Text("Location permission denied.")),
+                        );
+                      }
+                    },
+                  ),
+                ],
+              ),
+            )
+          : Stack(
               children: [
-                const CircularProgressIndicator(),
-                const SizedBox(height: 16),
-                const Text(
-                  "Location access is required to display the map.",
-                  textAlign: TextAlign.center,
-                ),
-                const SizedBox(height: 12),
-                ElevatedButton.icon(
-                  icon: const Icon(Icons.location_on),
-                  label: const Text("Grant Location Access"),
-                  onPressed: () async {
-                    final granted = await requestLocationPermission(context);
-                    if (granted) {
-                      await _initLocationDependentFeatures();
-                    } else {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text("Location permission denied.")),
-                      );
-                    }
+                GoogleMap(
+                  initialCameraPosition: CameraPosition(
+                    target: _currentPosition!,
+                    zoom: 13,
+                  ),
+                  myLocationEnabled: true,
+                  markers: Set<Marker>.of(markers.values),
+                  polylines: Set<Polyline>.of(polylines.values),
+                  // Combine heatmap circles (if visible) with construction circles
+                  circles: _heatmap.showHeatmap
+                      ? {..._heatmap.circles, ..._constructionCircles}
+                      : _constructionCircles,
+                  polygons: _constructionPolygons,
+                  onMapCreated: (controller) {
+                    _mapController.complete(controller);
+                    _heatmap.scheduleBoundsRefresh(
+                        _mapController.future, () => setState(() {}));
                   },
+                  onCameraMove: (_) => _heatmap.scheduleBoundsRefresh(
+                      _mapController.future, () => setState(() {})),
+                  onCameraIdle: () => _heatmap.refreshHeatForViewport(
+                      _mapController.future, () => setState(() {})),
+                  onLongPress: _onMapLongPress,
+                  onTap: (pos) => _heatmap.handleMapTap(context, pos),
+                ),
+
+                // Filter icon
+                if (_isCrimeViewActive)
+                  Positioned(
+                    top: 168,
+                    right: 16,
+                    child: Material(
+                      color: Colors.white,
+                      elevation: 2,
+                      shape: const CircleBorder(),
+                      child: IconButton(
+                        icon: const Icon(Icons.filter_alt_outlined),
+                        tooltip: 'Filter crimes',
+                        onPressed: _showCrimeFilterSheet,
+                      ),
+                    ),
+                  ),
+
+                // search bar
+                Positioned(
+                  top: 15,
+                  left: 5,
+                  right: 5,
+                  child: AutocompleteSearchBar(
+                    onSuggestionSelected: (LatLng coords) async {
+                      final controller = await _mapController.future;
+                      setState(() {
+                        isFollowingUser = false;
+                        _destination = coords;
+
+                        // remove previous search marker if it exists
+                        if (_searchMarkerId != null) {
+                          markers.remove(_searchMarkerId);
+                        }
+
+                        final markerId = const MarkerId("search_temp");
+                        _searchMarkerId = markerId;
+
+                        markers[markerId] = Marker(
+                          markerId: markerId,
+                          position: coords,
+                          icon: BitmapDescriptor.defaultMarkerWithHue(
+                              BitmapDescriptor.hueCyan),
+                          onTap: () => _openDetailsForLatLng(coords),
+                          infoWindow:
+                              const InfoWindow(title: "Searched Location"),
+                        );
+                      });
+
+                      controller.animateCamera(
+                        CameraUpdate.newLatLngZoom(coords, 13),
+                      );
+
+                      if (_origin != null && _destination != null) {
+                        _createRoute();
+                      }
+                      await _openDetailsForLatLng(coords);
+                    },
+                  ),
+                ),
+
+                // route mode buttons
+                if (_showModeButtons)
+                  Positioned(
+                    top: 80,
+                    left: 15,
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        ElevatedButton(
+                          onPressed: () async {
+                            setState(() {
+                              _travelMode = "driving";
+                            });
+                            _createRoute();
+                          },
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: _travelMode == "driving"
+                                ? Colors.blue
+                                : Colors.grey[300],
+                            foregroundColor: _travelMode == "driving"
+                                ? Colors.white
+                                : Colors.black,
+                          ),
+                          child: const Text("Car"),
+                        ),
+                        const SizedBox(width: 8),
+                        ElevatedButton(
+                          onPressed: () async {
+                            setState(() {
+                              _travelMode = "bicycling";
+                            });
+                            _createRoute();
+                          },
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: _travelMode == "bicycling"
+                                ? Colors.blue
+                                : Colors.grey[300],
+                            foregroundColor: _travelMode == "bicycling"
+                                ? Colors.white
+                                : Colors.black,
+                          ),
+                          child: const Text("Bike"),
+                        ),
+                        const SizedBox(width: 8),
+                        ElevatedButton(
+                          onPressed: () async {
+                            setState(() {
+                              _travelMode = "walking";
+                            });
+                            _createRoute();
+                          },
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: _travelMode == "walking"
+                                ? Colors.blue
+                                : Colors.grey[300],
+                            foregroundColor: _travelMode == "walking"
+                                ? Colors.white
+                                : Colors.black,
+                          ),
+                          child: const Text("Walk"),
+                        ),
+                      ],
+                    ),
+                  ),
+
+                // cancel route button
+                if (_destination != null)
+                  Positioned(
+                    top: 135,
+                    left: 15,
+                    child: FloatingActionButton(
+                      heroTag: "cancelRouteBtn",
+                      backgroundColor: Colors.red,
+                      onPressed: _cancelRoute,
+                      child: const Icon(Icons.close),
+                    ),
+                  ),
+
+                // Sidebar panel
+                AnimatedPositioned(
+                  duration: const Duration(milliseconds: 300),
+                  curve: Curves.easeInOut,
+                  top: 200,
+                  bottom: 210,
+                  left: _isSidebarOpen ? 0 : -250, // slides in/out
+                  child: Container(
+                    width: 225,
+                    color: Colors.white,
+                    child: SafeArea(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Padding(
+                            padding: EdgeInsets.all(10.0),
+                            child: Text(
+                              "Turn-by-Turn Directions",
+                              style: TextStyle(
+                                fontSize: 18,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ),
+                          Expanded(
+                            child: _steps.isEmpty
+                                ? const Center(child: Text("No route loaded"))
+                                : ListView.builder(
+                                    itemCount: _steps.length,
+                                    itemBuilder: (context, index) {
+                                      final step = _steps[index];
+                                      return ListTile(
+                                        leading: Icon(
+                                          Icons.directions,
+                                          color: index == _currentStepIndex
+                                              ? Colors.blue
+                                              : Colors.grey,
+                                        ),
+                                        title: Text(
+                                          _stripHtml(step['instruction']),
+                                          style: TextStyle(
+                                            fontWeight:
+                                                index == _currentStepIndex
+                                                    ? FontWeight.bold
+                                                    : FontWeight.normal,
+                                            color: index == _currentStepIndex
+                                                ? Colors.blue
+                                                : Colors.black,
+                                          ),
+                                        ),
+                                        subtitle: Text(
+                                          "${step['distance']} • ${step['duration']}",
+                                        ),
+                                        onTap: () {
+                                          _speakStep(step['instruction']);
+                                          setState(() {
+                                            _currentStepIndex = index;
+                                          });
+                                        },
+                                      );
+                                    },
+                                  ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+
+                // Navigation list button
+                if (_destination != null)
+                  Positioned(
+                    top: 135,
+                    left: 80,
+                    child: FloatingActionButton(
+                      heroTag: "TBTNavBtn",
+                      backgroundColor: Colors.white,
+                      foregroundColor: Colors.black,
+                      onPressed: () {
+                        setState(() {
+                          _isSidebarOpen = !_isSidebarOpen;
+                        });
+                      },
+                      child: const Icon(Icons.turn_right),
+                    ),
+                  ),
+
+                // Sign-out button
+                Positioned(
+                  top: 80,
+                  right: 10,
+                  child: ElevatedButton(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.white,
+                      foregroundColor: Colors.black,
+                      elevation: 4,
+                    ),
+                    onPressed: () => FirebaseAuth.instance.signOut(),
+                    child: const Icon(Icons.logout),
+                  ),
+                ),
+
+                // Settings (gear)
+                Positioned(
+                  top: 120,
+                  right: 5,
+                  child: IconButton(
+                    icon: const Icon(Icons.settings),
+                    onPressed: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                            builder: (_) => const SettingsScreen()),
+                      );
+                    },
+                  ),
+                ),
+
+                // Search radius slider (shown when speed dial is open)
+                if (_isDialOpen)
+                  Positioned(
+                    bottom: 160,
+                    left: 20,
+                    right: 20,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 16, vertical: 10),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(12),
+                        boxShadow: const [
+                          BoxShadow(blurRadius: 6, color: Colors.black26)
+                        ],
+                      ),
+                      child: Column(
+                        children: [
+                          const Text("Search Radius (m)",
+                              style: TextStyle(fontWeight: FontWeight.bold)),
+                          Slider(
+                            value: _searchRadius,
+                            min: 100,
+                            max: 5000,
+                            divisions: 49,
+                            label: '${_searchRadius.round()}m',
+                            onChanged: (value) =>
+                                setState(() => _searchRadius = value),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+
+                // Speed dial: nearby search by category
+                Positioned(
+                  bottom: 75,
+                  left: 20,
+                  child: SpeedDial(
+                    icon: Icons.place,
+                    activeIcon: Icons.close,
+                    backgroundColor: Colors.blueAccent,
+                    spacing: 12,
+                    onOpen: () => setState(() => _isDialOpen = true),
+                    onClose: () => setState(() => _isDialOpen = false),
+                    children: PoiCategory.values.map((cat) {
+                      return SpeedDialChild(
+                        child: Image.asset(cat.iconPath, height: 24),
+                        label: cat.label,
+                        onTap: () {
+                          setState(() {
+                            isFollowingUser = false;
+                          });
+                          _fetchCategoryPOIs(cat);
+                        },
+                      );
+                    }).toList(),
+                  ),
+                ),
+
+                // Toggle follow user + clear temp overlays
+                Positioned(
+                  bottom: 90,
+                  right: 20,
+                  child: FloatingActionButton(
+                    onPressed: () {
+                      setState(() {
+                        isFollowingUser = !isFollowingUser;
+
+                        // Remove temporary search marker if it exists
+                        if (isFollowingUser && _searchMarkerId != null) {
+                          markers.remove(_searchMarkerId);
+                          _searchMarkerId = null;
+                        }
+
+                        // Always remove POIs when returning to self
+                        if (isFollowingUser) {
+                          markers.removeWhere(
+                              (key, marker) => key.value.startsWith('poi_'));
+                          _clearCrimeMarkers(); // clear crime markers as well
+                        }
+                      });
+
+                      if (isFollowingUser && _currentPosition != null) {
+                        _cameraTo(_currentPosition!);
+                      }
+                    },
+                    child: Icon(isFollowingUser
+                        ? Icons.my_location
+                        : Icons.location_disabled),
+                  ),
+                ),
+
+                // Heatmap toggle
+                Positioned(
+                  bottom: 160,
+                  right: 20,
+                  child: FloatingActionButton(
+                    heroTag: 'heatToggle',
+                    mini: true,
+                    onPressed: () {
+                      setState(() =>
+                          _heatmap.showHeatmap = !_heatmap.showHeatmap);
+                      if (_heatmap.showHeatmap) {
+                        _heatmap.scheduleBoundsRefresh(
+                            _mapController.future, () => setState(() {}));
+                      } else {
+                        _heatmap.dispose();
+                        setState(() {});
+                      }
+                    },
+                    child: Icon(_heatmap.showHeatmap
+                        ? Icons.visibility
+                        : Icons.visibility_off),
+                  ),
+                ),
+
+                // Pinned locations
+                Positioned(
+                  bottom: 20,
+                  right: 20,
+                  child: FloatingActionButton(
+                    onPressed: _showPinnedLocations,
+                    child: const Icon(Icons.bookmark),
+                  ),
+                ),
+
+                // Friends
+                Positioned(
+                  bottom: 20,
+                  left: 20,
+                  child: ElevatedButton(
+                    onPressed: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                            builder: (_) => const FriendScreen()),
+                      );
+                    },
+                    child: const Text("Friends"),
+                  ),
+                ),
+
+                // Show location-sharing friends
+                Positioned(
+                  bottom: 140,
+                  left: 20,
+                  child: FloatingActionButton(
+                    onPressed: _showSharingFriends,
+                    child: const Icon(Icons.people),
+                  ),
                 ),
               ],
             ),
-          )
-        : Stack(
-            children: [
-              GoogleMap(
-                initialCameraPosition: CameraPosition(
-                  target: _currentPosition!,
-                  zoom: 13,
-                ),
-                myLocationEnabled: true,
-                markers: Set<Marker>.of(markers.values),
-                polylines: Set<Polyline>.of(polylines.values),
-                circles: _heatmap.showHeatmap
-                    ? {..._heatmap.circles, ..._constructionCircles}
-                    : _constructionCircles,
-                polygons: _constructionPolygons,
-                onMapCreated: (controller) {
-                  _mapController.complete(controller);
-                  _heatmap.scheduleBoundsRefresh(_mapController.future, () => setState(() {}));
-                },
-                onCameraMove: (_) => _heatmap.scheduleBoundsRefresh(_mapController.future, () => setState(() {})),
-                onCameraIdle: () => _heatmap.refreshHeatForViewport(_mapController.future, () => setState(() {})),
-                onLongPress: _onMapLongPress,
-                onTap: (pos) => _heatmap.handleMapTap(context, pos),
-              ),
-
-              // Filter icon
-              if (_isCrimeViewActive)
-              Positioned(
-                top: 168, right: 16,
-                child: Material(
-                  color: Colors.white,
-                  elevation: 2,
-                  shape: const CircleBorder(),
-                  child: IconButton(
-                    icon: const Icon(Icons.filter_alt_outlined),
-                    tooltip: 'Filter crimes',
-                    onPressed: _showCrimeFilterSheet,
-                  ),
-                ),
-              ),
-
-              // search bar
-              Positioned(
-                top: 15,
-                left: 5,
-                right: 5,
-                child: AutocompleteSearchBar(
-                  onSuggestionSelected: (LatLng coords) async {
-                    final controller = await _mapController.future;
-                    setState(() {
-                      isFollowingUser = false;
-                      _destination = coords;
-
-                      // remove previous search marker if it exists
-                      if (_searchMarkerId != null) {
-                        markers.remove(_searchMarkerId);
-                      }
-
-                      final markerId = const MarkerId("search_temp");
-                      _searchMarkerId = markerId;
-
-                      markers[markerId] = Marker(
-                        markerId: markerId,
-                        position: coords,
-                        icon: BitmapDescriptor.defaultMarkerWithHue(
-                            BitmapDescriptor.hueCyan),
-                            onTap: () => _openDetailsForLatLng(coords),
-                        infoWindow:
-                            const InfoWindow(title: "Searched Location"),
-                      );
-                    });
-
-                    controller.animateCamera(
-                      CameraUpdate.newLatLngZoom(coords, 13),
-                    );
-
-                    if (_origin != null && _destination != null) {
-                      _createRoute();
-                    }
-                    await _openDetailsForLatLng(coords);
-                  },
-                ),
-              ),
-
-              // route mode buttons
-              if (_showModeButtons) 
-                Positioned(
-                  top: 80,
-                  left: 15,
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      ElevatedButton(
-                        onPressed: () async {
-                          setState(() {
-                            _travelMode = "driving";
-                          });
-                          _createRoute();
-                        },
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: _travelMode == "driving"
-                              ? Colors.blue
-                              : Colors.grey[300],
-                          foregroundColor: _travelMode == "driving"
-                              ? Colors.white
-                              : Colors.black,
-                        ),
-                        child: const Text("Car"),
-                      ),
-                      const SizedBox(width: 8),
-                      ElevatedButton(
-                        onPressed: () async {
-                          setState(() {
-                            _travelMode = "bicycling";
-                          });
-                          _createRoute();
-                        },
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: _travelMode == "bicycling"
-                              ? Colors.blue
-                              : Colors.grey[300],
-                          foregroundColor: _travelMode == "bicycling"
-                              ? Colors.white
-                              : Colors.black,
-                        ),
-                        child: const Text("Bike"),
-                      ),
-                      const SizedBox(width: 8),
-                      ElevatedButton(
-                        onPressed: () async {
-                          setState(() {
-                            _travelMode = "walking";
-                          });
-                          _createRoute();
-                        },
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: _travelMode == "walking"
-                              ? Colors.blue
-                              : Colors.grey[300],
-                          foregroundColor: _travelMode == "walking"
-                              ? Colors.white
-                              : Colors.black,
-                        ),
-                        child: const Text("Walk"),
-                      ),
-                    ],
-                  ),
-                ),
-
-              // cancel route button
-              if (_destination != null)
-                Positioned(
-                  top: 135,
-                  left: 15,
-                  child: FloatingActionButton(
-                    heroTag: "cancelRouteBtn",
-                    backgroundColor: Colors.red,
-                    onPressed: _cancelRoute,
-                    child: const Icon(Icons.close),
-                  ),
-                ),
-
-              // Sidebar panel
-              AnimatedPositioned(
-                duration: const Duration(milliseconds: 300),
-                curve: Curves.easeInOut,
-                top: 200,
-                bottom: 210,
-                left: _isSidebarOpen ? 0 : -250, // slides in/out
-                child: Container(
-                  width: 225,
-                  color: Colors.white,
-                  child: SafeArea(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Padding(
-                          padding: EdgeInsets.all(10.0),
-                          child: Text(
-                            "Turn-by-Turn Directions",
-                            style: TextStyle(
-                              fontSize: 18,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                        ),
-                        Expanded(
-                          child: _steps.isEmpty
-                              ? const Center(child: Text("No route loaded"))
-                              : ListView.builder(
-                                  itemCount: _steps.length,
-                                  itemBuilder: (context, index) {
-                                    final step = _steps[index];
-                                    return ListTile(
-                                      leading: Icon(
-                                        Icons.directions,
-                                        color: index == _currentStepIndex
-                                            ? Colors.blue
-                                            : Colors.grey,
-                                      ),
-                                      title: Text(
-                                        _stripHtml(step['instruction']),
-                                        style: TextStyle(
-                                          fontWeight: index == _currentStepIndex
-                                              ? FontWeight.bold
-                                              : FontWeight.normal,
-                                          color: index == _currentStepIndex
-                                              ? Colors.blue
-                                              : Colors.black,
-                                        ),
-                                      ),
-                                      subtitle: Text(
-                                        "${step['distance']} • ${step['duration']}",
-                                      ),
-                                      onTap: () {
-                                        _speakStep(step['instruction']);
-                                        setState(() {
-                                          _currentStepIndex = index;
-                                        });
-                                      },
-                                    );
-                                  },
-                                ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ),
-
-              // Navigation list button
-              if (_destination != null)
-                Positioned(
-                  top: 135,
-                  left: 80,
-                  child: FloatingActionButton(
-                    heroTag: "TBTNavBtn",
-                    backgroundColor: Colors.white,
-                    foregroundColor: Colors.black,
-                    onPressed: () {
-                      setState(() {
-                        _isSidebarOpen = !_isSidebarOpen;
-                      });
-                    },
-                    child: const Icon(Icons.turn_right),
-                  ),
-                ),
-
-              // Sign-out button
-              Positioned(
-                top: 80,
-                right: 10,
-                child: ElevatedButton(
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.white,
-                    foregroundColor: Colors.black,
-                    elevation: 4,
-                  ),
-                  onPressed: () => FirebaseAuth.instance.signOut(),
-                  child: const Icon(Icons.logout),
-                ),
-              ),
-
-              // Settings (gear)
-              Positioned(
-                top: 120,
-                right: 5,
-                child: IconButton(
-                  icon: const Icon(Icons.settings),
-                  onPressed: () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                          builder: (_) => const SettingsScreen()),
-                    );
-                  },
-                ),
-              ),
-
-              // Search radius slider (shown when speed dial is open)
-              if (_isDialOpen)
-                Positioned(
-                  bottom: 160,
-                  left: 20,
-                  right: 20,
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 16, vertical: 10),
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(12),
-                      boxShadow: const [
-                        BoxShadow(blurRadius: 6, color: Colors.black26)
-                      ],
-                    ),
-                    child: Column(
-                      children: [
-                        const Text("Search Radius (m)",
-                            style: TextStyle(fontWeight: FontWeight.bold)),
-                        Slider(
-                          value: _searchRadius,
-                          min: 100,
-                          max: 5000,
-                          divisions: 49,
-                          label: '${_searchRadius.round()}m',
-                          onChanged: (value) =>
-                              setState(() => _searchRadius = value),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-
-              // Speed dial: nearby search by category
-              Positioned(
-                bottom: 75,
-                left: 20,
-                child: SpeedDial(
-                  icon: Icons.place,
-                  activeIcon: Icons.close,
-                  backgroundColor: Colors.blueAccent,
-                  spacing: 12,
-                  onOpen: () => setState(() => _isDialOpen = true),
-                  onClose: () => setState(() => _isDialOpen = false),
-                  children: PoiCategory.values.map((cat) {
-                    return SpeedDialChild(
-                      child: Image.asset(cat.iconPath, height: 24),
-                      label: cat.label,
-                      onTap: () {
-                        setState(() {
-                          isFollowingUser = false;
-                        });
-                        _fetchCategoryPOIs(cat);
-                      },
-                    );
-                  }).toList(),
-                ),
-              ),
-
-              // Toggle follow user + clear temp overlays
-              Positioned(
-                bottom: 90,
-                right: 20,
-                child: FloatingActionButton(
-                  onPressed: () {
-                    setState(() {
-                      isFollowingUser = !isFollowingUser;
-
-                      // Remove temporary search marker if it exists
-                      if (isFollowingUser && _searchMarkerId != null) {
-                        markers.remove(_searchMarkerId);
-                        _searchMarkerId = null;
-                      }
-
-                      // Always remove POIs when returning to self
-                      if (isFollowingUser) {
-                        markers.removeWhere((key, marker) =>
-                            key.value.startsWith('poi_'));
-                            _clearCrimeMarkers(); // clear crime markers as well
-                      }
-                    });
-
-                    if (isFollowingUser && _currentPosition != null) {
-                      _cameraTo(_currentPosition!);
-                    }
-                  },
-                  child: Icon(isFollowingUser
-                      ? Icons.my_location
-                      : Icons.location_disabled),
-                ),
-              ),
-
-// Heatmap toggle
-Positioned(
-  bottom: 160,
-  right: 20,
-  child: FloatingActionButton(
-    heroTag: 'heatToggle',
-    mini: true,
-    onPressed: () {
-      setState(() => _heatmap.showHeatmap = !_heatmap.showHeatmap);
-
-      if (_heatmap.showHeatmap) {
-        // When turning the heatmap ON, tell it to start fetching data again.
-        _heatmap.scheduleBoundsRefresh(_mapController.future, () => setState(() {}));
-      } else {
-        // When turning it OFF, call its dispose method to stop the data stream.
-        _heatmap.dispose();
-        setState(() {}); // Redraw the UI without the circles.
-      }
-    },
-    child: Icon(
-        _heatmap.showHeatmap ? Icons.visibility : Icons.visibility_off),
-  ),
-),
-
-              // Pinned locations
-              Positioned(
-                bottom: 20,
-                right: 20,
-                child: FloatingActionButton(
-                  onPressed: _showPinnedLocations,
-                  child: const Icon(Icons.bookmark),
-                ),
-              ),
-
-              // Friends
-              Positioned(
-                bottom: 20,
-                left: 20,
-                child: ElevatedButton(
-                  onPressed: () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                          builder: (_) => const FriendScreen()),
-                    );
-                  },
-                  child: const Text("Friends"),
-                ),
-              ),
-
-              // Show location-sharing friends
-              Positioned(
-                bottom: 140,
-                left: 20,
-                child: FloatingActionButton(
-                  onPressed: _showSharingFriends,
-                  child: const Icon(Icons.people),
-                ),
-              ),
-
-              // Community Rating (CrowdSource) screen button
-              Positioned(
-                bottom: 210, // Adjusted position to not overlap
-                right: 20,
-                child: ElevatedButton.icon(
-                  icon: const Icon(Icons.shield_outlined),
-                  label: const Text("Rating"),
-                  onPressed: () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                          builder: (context) => const RateAreaScreen()),
-                    );
-                  },
-                ),
-              ),
-            ],
-          ),
-  );
-  }
-
-  /// Listens to the stream of active construction zones from Firestore.
-  void _listenForConstructionZones() {
-    _constructionSub = _constructionService.getActiveZones().listen((zones) {
-      final Set<Circle> updatedCircles = {};
-      final Set<Polygon> updatedPolygons = {};
-
-      for (var z in zones) {
-        if (z['polygon'] != null && (z['polygon'] as List).isNotEmpty) {
-          updatedPolygons.add(
-            Polygon(
-              polygonId: PolygonId(z['id']),
-              points: (z['polygon'] as List)
-                  .map((p) => LatLng(p['lat'], p['lng']))
-                  .toList(),
-              strokeColor: Colors.orange.shade800,
-              fillColor: Colors.orange.withOpacity(0.3),
-              strokeWidth: 2,
-            ),
-          );
-        }
-        else if (z['lat'] != null && z['lng'] != null) {
-          updatedCircles.add(
-            Circle(
-              circleId: CircleId(z['id']),
-              center: LatLng(z['lat'], z['lng']),
-              radius: (z['radius'] as double?) ?? 100.0,
-              strokeColor: Colors.orange.shade800,
-              fillColor: Colors.orange.withOpacity(0.3),
-              strokeWidth: 2,
-            ),
-          );
-        }
-      }
-
-      if (mounted) {
-        setState(() {
-          _constructionCircles = updatedCircles;
-          _constructionPolygons = updatedPolygons;
-        });
-      }
-
-      if (polylines.isNotEmpty) {
-        _checkRouteForConstruction();
-      }
-
-    }, onError: (error) {
-      debugPrint("Error listening to construction zones: $error");
-    });
-  }
-
-  /// Checks if the current route polyline intersects with any construction zones.
-  void _checkRouteForConstruction() {
-    if (polylines.isEmpty || _constructionCircles.isEmpty) {
-      return; 
-    }
-
-    final routePoints = polylines.values.first.points;
-    bool intersects = false;
-
-    for (final point in routePoints) {
-      for (final circle in _constructionCircles) {
-        final distance = Geolocator.distanceBetween(
-          point.latitude,
-          point.longitude,
-          circle.center.latitude,
-          circle.center.longitude,
-        );
-        if (distance <= circle.radius) {
-          intersects = true;
-          break;
-        }
-      }
-      if (intersects) break;
-    }
-
-    if (intersects) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('⚠️ Your route passes through a construction zone.'),
-            backgroundColor: Colors.orange,
-            duration: Duration(seconds: 5),
-          ),
-        );
-      }
-    }
+    );
   }
 
   Future<void> _initLocationDependentFeatures() async {
-  final granted = await requestLocationPermission(context);
-  debugPrint("Location permission granted: $granted");
-  if (!granted) return;
+    final granted = await requestLocationPermission(context);
+    debugPrint("Location permission granted: $granted");
+    if (!granted) return;
 
-  await getLocationUpdates();
-  final points = await getPolylinePoints();
-  generatePolyline(points);
-}
-
+    await getLocationUpdates();
+    final points = await getPolylinePoints();
+    generatePolyline(points);
+  }
 
   // Location / camera / polyline
 
@@ -771,7 +669,7 @@ Positioned(
     }
 
     _location.onLocationChanged.listen((loc) {
-      if(!mounted) return;
+      if (!mounted) return;
       debugPrint("Got location update: ${loc.latitude}, ${loc.longitude}");
       if (loc.latitude != null && loc.longitude != null) {
         final pos = LatLng(loc.latitude!, loc.longitude!);
@@ -786,55 +684,51 @@ Positioned(
     controller.animateCamera(CameraUpdate.newLatLngZoom(pos, 13));
   }
 
-  // This is the updated code for traffic-aware routing.
+  /// Traffic-aware routing (Directions API with departure_time=now)
   Future<List<LatLng>> getPolylinePoints() async {
     if (_currentPosition == null) {
-      LocationData locationData = await _location.getLocation();
-      _currentPosition = LatLng(locationData.latitude!, locationData.longitude!);
+      final locationData = await _location.getLocation();
+      _currentPosition =
+          LatLng(locationData.latitude!, locationData.longitude!);
     }
+
     _origin = _currentPosition;
+
     if (_destination == null) {
       return [];
     }
 
-    List<LatLng> polylineCoordinates = [];
-    
     final url = Uri.parse(
       'https://maps.googleapis.com/maps/api/directions/json'
       '?origin=${_origin!.latitude},${_origin!.longitude}'
       '&destination=${_destination!.latitude},${_destination!.longitude}'
       '&mode=$_travelMode'
-      '&departure_time=now' // Key parameter for real-time traffic
-      '&key=$GOOGLE_MAPS_API_KEY'
+      '&departure_time=now'
+      '&key=$GOOGLE_MAPS_API_KEY',
     );
 
+    final List<LatLng> coords = [];
     try {
-      final response = await http.get(url);
-
-      if (response.statusCode == 200) {
-        final data = jsonDecode(response.body);
-        
-        if ((data['routes'] as List).isNotEmpty) {
-          final points = data['routes'][0]['overview_polyline']['points'];
-          polylineCoordinates = PolylinePoints().decodePolyline(points)
-            .map((point) => LatLng(point.latitude, point.longitude))
-            .toList();
-        } else {
-          debugPrint("No routes found: ${data['status']}");
+      final resp = await http.get(url);
+      if (resp.statusCode == 200) {
+        final data = jsonDecode(resp.body);
+        final routes = data['routes'] as List?;
+        if (routes != null && routes.isNotEmpty) {
+          final poly = routes[0]['overview_polyline']?['points'] as String?;
+          if (poly != null) {
+            final decoded = PolylinePoints().decodePolyline(poly);
+            coords.addAll(decoded.map((p) => LatLng(p.latitude, p.longitude)));
+          }
         }
       } else {
-        debugPrint("Failed to load directions: ${response.statusCode}");
+        debugPrint('Directions API error: ${resp.statusCode}');
       }
     } catch (e) {
-      debugPrint("Error fetching directions: $e");
+      debugPrint('Directions API call failed: $e');
     }
 
-    if(mounted) {
-      setState(() {
-        _showModeButtons = true;
-      });
-    }
-    return polylineCoordinates;
+    _showModeButtons = true;
+    return coords;
   }
 
   void generatePolyline(List<LatLng> coordinates) {
@@ -845,10 +739,10 @@ Positioned(
       width: 6,
       points: coordinates,
     );
-    if (mounted) {
-      setState(() {});
-    }
-  } 
+    setState(() {});
+    // After drawing/refreshing a route, check for construction intersections.
+    _checkRouteForConstruction();
+  }
 
   void _cancelRoute() {
     setState(() {
@@ -864,81 +758,81 @@ Positioned(
     });
   }
 
-// fetch route + step instructions
-Future<List<Map<String, dynamic>>> _getDirectionsWithSteps(
-  double originLat,
-  double originLng,
-  double destLat,
-  double destLng,
-  String mode,
-) async {
-  final url = Uri.parse(
-    'https://maps.googleapis.com/maps/api/directions/json'
-    '?origin=$originLat,$originLng'
-    '&destination=$destLat,$destLng'
-    '&mode=$mode'
-    '&key=$GOOGLE_MAPS_API_KEY',
-  );
+  // fetch route + step instructions
+  Future<List<Map<String, dynamic>>> _getDirectionsWithSteps(
+    double originLat,
+    double originLng,
+    double destLat,
+    double destLng,
+    String mode,
+  ) async {
+    final url = Uri.parse(
+      'https://maps.googleapis.com/maps/api/directions/json'
+      '?origin=$originLat,$originLng'
+      '&destination=$destLat,$destLng'
+      '&mode=$mode'
+      '&departure_time=now'
+      '&key=$GOOGLE_MAPS_API_KEY',
+    );
 
-  final response = await http.get(url);
+    final response = await http.get(url);
 
-  if (response.statusCode == 200) {
-    final data = jsonDecode(response.body);
+    if (response.statusCode == 200) {
+      final data = jsonDecode(response.body);
+      final routes = data['routes'] as List?;
+      if (routes == null || routes.isEmpty) return [];
 
-    // Add a check to ensure routes are not empty
-    if ((data['routes'] as List).isNotEmpty) {
-      final steps = data['routes'][0]['legs'][0]['steps'] as List;
-      return steps.map((s) => {
-        'instruction': s['html_instructions'],
-        'distance': s['distance']['text'],
-        'duration': s['duration']['text'],
-        'start': s['start_location'],
-        'end': s['end_location'],
-      }).toList();
+      final legs = routes[0]['legs'] as List?;
+      if (legs == null || legs.isEmpty) return [];
+
+      final steps = legs[0]['steps'] as List? ?? [];
+      return steps
+          .map((s) => {
+                'instruction': s['html_instructions'],
+                'distance': s['distance']?['text'],
+                'duration': s['duration']?['text'],
+                'start': s['start_location'],
+                'end': s['end_location'],
+              })
+          .toList();
+    } else {
+      throw Exception('Failed to load directions');
     }
-  } else {
-    throw Exception('Failed to load directions');
   }
-  return []; // Return empty list if no routes or error
-}
 
-Future<void> _createRoute() async {
-  //generate route
-  final points = await getPolylinePoints();
-  generatePolyline(points);
+  Future<void> _createRoute() async {
+    // generate route
+    final points = await getPolylinePoints();
+    generatePolyline(points);
 
-  // Check for construction after generating the polyline
-  _checkRouteForConstruction();
+    // fetch step-by-step directions
+    if (_origin != null && _destination != null) {
+      final steps = await _getDirectionsWithSteps(
+        _origin!.latitude,
+        _origin!.longitude,
+        _destination!.latitude,
+        _destination!.longitude,
+        _travelMode,
+      );
 
-
-  // fetch step-by-step directions
-  final steps = await _getDirectionsWithSteps(
-    _origin!.latitude,
-    _origin!.longitude,
-    _destination!.latitude,
-    _destination!.longitude,
-    _travelMode,
-  );
-
-  if (mounted) {
-    setState(() {
-      _showModeButtons = true;
-      _steps = steps;
-    });
+      setState(() {
+        _showModeButtons = true;
+        _steps = steps;
+      });
+    }
   }
-}
 
-// text-to-speech
-Future<void> _speakStep(String text) async {
-  await flutterTts.speak(_stripHtml(text));
-}
+  // text-to-speech
+  Future<void> _speakStep(String text) async {
+    await flutterTts.speak(_stripHtml(text));
+  }
 
   // helper to remove <b> tags etc. from Google instructions
   String _stripHtml(String htmlText) {
     return htmlText.replaceAll(RegExp(r'<[^>]*>'), '');
   }
 
-  // POIs / Places 
+  // POIs / Places
 
   // Handle marker tap and fetch place details (full info: name, address, phone, website, rating)
   Future<void> _handleMarkerTap(String placeId) async {
@@ -953,8 +847,10 @@ Future<void> _speakStep(String text) async {
   }
 
   void _showPlaceDetailsBottomSheet(Map<String, dynamic> placeDetails) {
-    final lat = (placeDetails['geometry']?['location']?['lat'] as num?)?.toDouble();
-    final lng = (placeDetails['geometry']?['location']?['lng'] as num?)?.toDouble();
+    final lat =
+        (placeDetails['geometry']?['location']?['lat'] as num?)?.toDouble();
+    final lng =
+        (placeDetails['geometry']?['location']?['lng'] as num?)?.toDouble();
 
     showModalBottomSheet(
       context: context,
@@ -971,7 +867,8 @@ Future<void> _speakStep(String text) async {
             const SizedBox(height: 10),
             Text('Address: ${placeDetails['formatted_address'] ?? 'No address'}'),
             const SizedBox(height: 10),
-            Text('Phone: ${placeDetails['formatted_phone_number'] ?? 'No phone number'}'),
+            Text(
+                'Phone: ${placeDetails['formatted_phone_number'] ?? 'No phone number'}'),
             const SizedBox(height: 10),
             Text('Website: ${placeDetails['website'] ?? 'No website'}'),
             const SizedBox(height: 10),
@@ -1003,12 +900,13 @@ Future<void> _speakStep(String text) async {
 
       setState(() {
         _lastFetchedPOIs = results;
-        markers.removeWhere(
-            (key, marker) => key.value.startsWith('poi_'));
+        markers.removeWhere((key, marker) => key.value.startsWith('poi_'));
 
         for (final poi in results) {
-          final lat = (poi['geometry']?['location']?['lat'] as num?)?.toDouble();
-          final lng = (poi['geometry']?['location']?['lng'] as num?)?.toDouble();
+          final lat =
+              (poi['geometry']?['location']?['lat'] as num?)?.toDouble();
+          final lng =
+              (poi['geometry']?['location']?['lng'] as num?)?.toDouble();
           if (lat == null || lng == null) continue;
 
           final placeId = poi['place_id'] as String?;
@@ -1031,9 +929,11 @@ Future<void> _speakStep(String text) async {
       _showPOIListSheet();
     } catch (e) {
       debugPrint('Error fetching ${category.label}: $e');
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Failed to fetch ${category.label} nearby')),
-      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to fetch ${category.label} nearby')),
+        );
+      }
     }
   }
 
@@ -1060,11 +960,16 @@ Future<void> _speakStep(String text) async {
   void _showPOIListSheet() {
     final sorted = [..._lastFetchedPOIs]
       ..sort((a, b) {
-        final aLat = (a['geometry']?['location']?['lat'] as num?)?.toDouble() ?? 0;
-        final aLng = (a['geometry']?['location']?['lng'] as num?)?.toDouble() ?? 0;
-        final bLat = (b['geometry']?['location']?['lat'] as num?)?.toDouble() ?? 0;
-        final bLng = (b['geometry']?['location']?['lng'] as num?)?.toDouble() ?? 0;
-        return _calculateDistanceMeters(_currentPosition!, aLat, aLng)
+        final aLat =
+            (a['geometry']?['location']?['lat'] as num?)?.toDouble() ?? 0;
+        final aLng =
+            (a['geometry']?['location']?['lng'] as num?)?.toDouble() ?? 0;
+        final bLat =
+            (b['geometry']?['location']?['lat'] as num?)?.toDouble() ?? 0;
+        final bLng =
+            (b['geometry']?['location']?['lng'] as num?)?.toDouble() ?? 0;
+        return _calculateDistanceMeters(
+                _currentPosition!, aLat, aLng)
             .compareTo(_calculateDistanceMeters(_currentPosition!, bLat, bLng));
       });
 
@@ -1074,8 +979,10 @@ Future<void> _speakStep(String text) async {
         itemCount: sorted.length,
         itemBuilder: (_, i) {
           final poi = sorted[i];
-          final lat = (poi['geometry']?['location']?['lat'] as num?)?.toDouble();
-          final lng = (poi['geometry']?['location']?['lng'] as num?)?.toDouble();
+          final lat =
+              (poi['geometry']?['location']?['lat'] as num?)?.toDouble();
+          final lng =
+              (poi['geometry']?['location']?['lng'] as num?)?.toDouble();
           final name = poi['name']?.toString() ?? 'Unknown';
           final vicinity = poi['vicinity']?.toString() ?? 'No address';
 
@@ -1083,7 +990,8 @@ Future<void> _speakStep(String text) async {
             leading: const Icon(Icons.location_on),
             title: Text(name),
             subtitle: (lat != null && lng != null)
-                ? Text('$vicinity • ${_calculateDistanceMeters(_currentPosition!, lat, lng).round()}m')
+                ? Text(
+                    '$vicinity • ${_calculateDistanceMeters(_currentPosition!, lat, lng).round()}m')
                 : Text(vicinity),
             trailing: (lat != null && lng != null)
                 ? IconButton(
@@ -1283,6 +1191,7 @@ Future<void> _speakStep(String text) async {
               });
 
               Future.delayed(const Duration(seconds: 5), () {
+                if (!mounted) return;
                 setState(() => markers.remove(id));
               });
             },
@@ -1301,7 +1210,8 @@ Future<void> _speakStep(String text) async {
   // Info provided on click of a crime pin (YYYY-MM-DD HH:MM:SS.sss - Location)
   String _crimeSnippet(CrimeIncident c) {
     final when = c.occurredAt.toLocal().toString();
-    final where = c.address ?? '${c.position.latitude.toStringAsFixed(4)}, ${c.position.longitude.toStringAsFixed(4)}';
+    final where = c.address ??
+        '${c.position.latitude.toStringAsFixed(4)}, ${c.position.longitude.toStringAsFixed(4)}';
     return '$when - $where';
   }
 
@@ -1318,32 +1228,38 @@ Future<void> _speakStep(String text) async {
         itemBuilder: (_, i) {
           final c = _lastCrimes[i];
           // for each crime, calculate distance
-          final dist = _calculateDistanceMeters(_currentPosition!, c.position.latitude, c.position.longitude).round();
-          // each crime returns a ListTile with basic icon, 
+          final dist = _calculateDistanceMeters(
+                  _currentPosition!, c.position.latitude, c.position.longitude)
+              .round();
+          // each crime returns a ListTile with basic icon,
           //the offense in question, address, and distance
           return ListTile(
             leading: const Icon(Icons.report),
             title: Text(c.offense),
-            subtitle: Text('${c.occurredAt.toLocal()} - ${c.address ?? 'Unknown address'} - ${dist}m'),
+            subtitle: Text(
+                '${c.occurredAt.toLocal()} - ${c.address ?? 'Unknown address'} - ${dist}m'),
             // code reused from POI logic, allow the user to navigate to a incident scene
             trailing: IconButton(
               icon: const Icon(Icons.navigation),
-              onPressed: () => _launchNavigation(c.position.latitude, c.position.longitude),
+              onPressed: () => _launchNavigation(
+                  c.position.latitude, c.position.longitude),
             ),
             // on tap of a list object, move the camera to it's coordinates, close modal
             onTap: () async {
               final controller = await _mapController.future;
-              controller.animateCamera(CameraUpdate.newLatLngZoom(c.position, 15));
+              controller.animateCamera(
+                  CameraUpdate.newLatLngZoom(c.position, 15));
               Navigator.pop(context);
             },
           );
         },
       ),
-    );
-    _isCrimesSheetOpen = false;
+    ).whenComplete(() {
+      _isCrimesSheetOpen = false;
+    });
   }
 
-  // Long press handler 
+  // Long press handler
   void _onMapLongPress(LatLng pos) {
     showModalBottomSheet(
       context: context,
@@ -1375,31 +1291,30 @@ Future<void> _speakStep(String text) async {
                 setState(() {});
                 // show the draggable radius sheet
                 _showCrimeRadiusSheet();
-              },),
-              ListTile(
-                leading: const Icon(Icons.star_rate_outlined),
-                title: const Text('Rate this area'),
-                onTap: () {
-                  Navigator.pop(context); //close modal
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (_) => RateAreaScreen(pos: pos)
-                    ),
-                  );
-                }
-              ),
-              const Divider(height: 0),
-              ListTile(
-                leading: const Icon(Icons.close),
-                title: const Text('Cancel'),
-                onTap: () => Navigator.pop(context),
-              ),
-            ],
-          ),
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.star_rate_outlined),
+              title: const Text('Rate this area'),
+              onTap: () {
+                Navigator.pop(context); //close modal
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (_) => RateAreaScreen(pos: pos)),
+                );
+              },
+            ),
+            const Divider(height: 0),
+            ListTile(
+              leading: const Icon(Icons.close),
+              title: const Text('Cancel'),
+              onTap: () => Navigator.pop(context),
+            ),
+          ],
         ),
-      );
-    }
+      ),
+    );
+  }
 
   // Open a drag bar for radius
   // Repurposes code from POI radius slider
@@ -1422,7 +1337,8 @@ Future<void> _speakStep(String text) async {
                   // Sheet title and current radius value displayed here
                   Row(
                     children: [
-                      const Text('Crime radius (m)', style: TextStyle(fontWeight: FontWeight.bold)),
+                      const Text('Crime radius (m)',
+                          style: TextStyle(fontWeight: FontWeight.bold)),
                       const Spacer(),
                       Text('${_crimeRadius.round()} m'),
                     ],
@@ -1434,9 +1350,10 @@ Future<void> _speakStep(String text) async {
                     max: 5000,
                     divisions: 49,
                     onChanged: (v) {
-                    setLocal(() => _crimeRadius = v);}, // update label live
+                      setLocal(() => _crimeRadius = v);
+                    }, // update label live
                     onChangeEnd: (v) async {
-                      Navigator.pop(ctx); // close the radius bar once it's been selected
+                      Navigator.pop(ctx); // close the radius bar once selected
                       if (_crimeCenter != null) {
                         await _loadCrimesAt(
                           center: _crimeCenter!,
@@ -1446,13 +1363,14 @@ Future<void> _speakStep(String text) async {
                       }
                     },
                   ),
-                  const SizedBox(height: 8), 
+                  const SizedBox(height: 8),
                   Align(
                     alignment: Alignment.centerRight,
-                    child: TextButton.icon( // close button
+                    child: TextButton.icon(
+                      // close button
                       icon: const Icon(Icons.close),
-                      label: const Text('Close'), 
-                      onPressed: () => Navigator.pop(ctx), // close the modal on click of 'close'
+                      label: const Text('Close'),
+                      onPressed: () => Navigator.pop(ctx),
                     ),
                   ),
                 ],
@@ -1461,46 +1379,54 @@ Future<void> _speakStep(String text) async {
           },
         );
       },
-    ).whenComplete(() { //runs on close of the radius bar, cleans up.
+    ).whenComplete(() {
+      // no-op
     });
   }
- 
 
-    // calculate distance using Haversine formula 
-    double _calculateDistanceMeters(
-        LatLng from, double lat2, double lng2) {
-      const R = 6371000;
-      final dLat = (lat2 - from.latitude) * (pi / 180);
-      final dLng = (lng2 - from.longitude) * (pi / 180);
-      final a = 0.5 -
-          cos(dLat) / 2 +
-          cos(from.latitude * pi / 180) *
-              cos(lat2 * pi / 180) *
-              (1 - cos(dLng)) / 2;
-      return R * 2 * asin(sqrt(a));
-    }
+  // calculate distance using Haversine formula
+  double _calculateDistanceMeters(LatLng from, double lat2, double lng2) {
+    const R = 6371000;
+    final dLat = (lat2 - from.latitude) * (pi / 180);
+    final dLng = (lng2 - from.longitude) * (pi / 180);
+    final a = 0.5 -
+        cos(dLat) / 2 +
+        cos(from.latitude * pi / 180) *
+            cos(lat2 * pi / 180) *
+            (1 - cos(dLng)) / 2;
+    return R * 2 * asin(sqrt(a));
+  }
 
-    // open Google Maps with selected coordinates
-    Future<void> _launchNavigation(double lat, double lng) async {
-      final uri = Uri.parse(
-          'https://www.google.com/maps/dir/?api=1&destination=$lat,$lng&travelmode=driving');
-      if (await canLaunchUrl(uri)) {
-        await launchUrl(uri, mode: LaunchMode.externalApplication);
-      } else {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Could not launch Google Maps.')),
-          );
-        }
+  // open Google Maps with selected coordinates
+  Future<void> _launchNavigation(double lat, double lng) async {
+    final uri = Uri.parse(
+        'https://www.google.com/maps/dir/?api=1&destination=$lat,$lng&travelmode=driving');
+    if (await canLaunchUrl(uri)) {
+      await launchUrl(uri, mode: LaunchMode.externalApplication);
+    } else {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Could not launch Google Maps.')),
+        );
       }
     }
-    //
+  }
+
+  //
   Future<void> _openDetailsForLatLng(LatLng pos) async {
     try {
-      final details = await PlaceApiProvider().fetchNearestEstablishmentDetails(pos);
+      final details =
+          await PlaceApiProvider().fetchNearestEstablishmentDetails(pos);
       if (!mounted) return;
       _showPlaceCrimeSheet(center: pos, details: details);
 
+      if (details != null) {
+        // Reuse your existing POI bottom sheet (already renders
+        // address, phone, website, rating, and a Navigate button).
+      } else {
+        // Nothing business-like nearby; show a simple fallback.
+        _showBasicLocationSheet(pos);
+      }
     } catch (e) {
       if (!mounted) return;
       _showBasicLocationSheet(pos);
@@ -1510,8 +1436,10 @@ Future<void> _speakStep(String text) async {
   // Fallback sheet for raw coordinates (no business found).
   void _showBasicLocationSheet(LatLng pos) {
     final from = _currentPosition ?? pos;
-    final distM = _calculateDistanceMeters(from, pos.latitude, pos.longitude).round();
-    final label = '${pos.latitude.toStringAsFixed(5)}, ${pos.longitude.toStringAsFixed(5)}';
+    final distM =
+        _calculateDistanceMeters(from, pos.latitude, pos.longitude).round();
+    final label =
+        '${pos.latitude.toStringAsFixed(5)}, ${pos.longitude.toStringAsFixed(5)}';
 
     showModalBottomSheet(
       context: context,
@@ -1525,15 +1453,21 @@ Future<void> _speakStep(String text) async {
             Row(children: [
               const Icon(Icons.place),
               const SizedBox(width: 8),
-              Text('Selected location', style: Theme.of(context).textTheme.titleMedium),
+              Text('Selected location',
+                  style: Theme.of(context).textTheme.titleMedium),
             ]),
             const SizedBox(height: 8),
             Text(label, style: Theme.of(context).textTheme.bodyMedium),
             const SizedBox(height: 6),
-            Text('~${distM}m away', style: Theme.of(context).textTheme.bodySmall?.copyWith(color: Colors.grey[700])),
+            Text('~${distM}m away',
+                style: Theme.of(context)
+                    .textTheme
+                    .bodySmall
+                    ?.copyWith(color: Colors.grey[700])),
             const SizedBox(height: 12),
             Wrap(
-              spacing: 8, runSpacing: 8,
+              spacing: 8,
+              runSpacing: 8,
               children: [
                 ElevatedButton.icon(
                   icon: const Icon(Icons.bookmark_add_outlined),
@@ -1576,7 +1510,7 @@ Future<void> _speakStep(String text) async {
   }) {
     showModalBottomSheet(
       context: context,
-      isScrollControlled: true,     // allows a taller sheet
+      isScrollControlled: true, // allows a taller sheet
       showDragHandle: true,
       builder: (_) {
         final height = MediaQuery.of(context).size.height * 0.55;
@@ -1607,20 +1541,26 @@ Future<void> _speakStep(String text) async {
       },
     );
   }
-  Widget _buildPlaceDetailsView(LatLng fallbackPos, Map<String, dynamic>? d) {
-    final name    = d?['name'] as String? ?? 'Selected location';
-    final address = d?['formatted_address'] as String?
-        ?? '${fallbackPos.latitude.toStringAsFixed(5)}, ${fallbackPos.longitude.toStringAsFixed(5)}';
-    final phone   = d?['formatted_phone_number'] as String?;
-    final website = d?['website'] as String?;
-    final rating  = (d?['rating'] is num) ? (d!['rating'] as num).toDouble() : null;
 
-    final lat = (d?['geometry']?['location']?['lat'] as num?)?.toDouble() ?? fallbackPos.latitude;
-    final lng = (d?['geometry']?['location']?['lng'] as num?)?.toDouble() ?? fallbackPos.longitude;
+  Widget _buildPlaceDetailsView(
+      LatLng fallbackPos, Map<String, dynamic>? d) {
+    final name = d?['name'] as String? ?? 'Selected location';
+    final address = d?['formatted_address'] as String? ??
+        '${fallbackPos.latitude.toStringAsFixed(5)}, ${fallbackPos.longitude.toStringAsFixed(5)}';
+    final phone = d?['formatted_phone_number'] as String?;
+    final website = d?['website'] as String?;
+    final rating =
+        (d?['rating'] is num) ? (d!['rating'] as num).toDouble() : null;
+
+    final lat = (d?['geometry']?['location']?['lat'] as num?)?.toDouble() ??
+        fallbackPos.latitude;
+    final lng = (d?['geometry']?['location']?['lng'] as num?)?.toDouble() ??
+        fallbackPos.longitude;
     final pos = LatLng(lat, lng);
 
     final from = _currentPosition ?? pos;
-    final distM = _calculateDistanceMeters(from, pos.latitude, pos.longitude).round();
+    final distM =
+        _calculateDistanceMeters(from, pos.latitude, pos.longitude).round();
 
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
@@ -1630,7 +1570,9 @@ Future<void> _speakStep(String text) async {
             children: [
               const Icon(Icons.place),
               const SizedBox(width: 8),
-              Expanded(child: Text(name, style: Theme.of(context).textTheme.titleMedium)),
+              Expanded(
+                  child: Text(name,
+                      style: Theme.of(context).textTheme.titleMedium)),
               if (rating != null) ...[
                 const Icon(Icons.star, size: 18, color: Colors.amber),
                 const SizedBox(width: 4),
@@ -1643,7 +1585,10 @@ Future<void> _speakStep(String text) async {
           const SizedBox(height: 6),
           Text(
             'LatLng: ${pos.latitude.toStringAsFixed(5)}, ${pos.longitude.toStringAsFixed(5)} • ${distM}m away',
-            style: Theme.of(context).textTheme.bodySmall?.copyWith(color: Colors.grey[700]),
+            style: Theme.of(context)
+                .textTheme
+                .bodySmall
+                ?.copyWith(color: Colors.grey[700]),
           ),
           if (phone != null || website != null) ...[
             const SizedBox(height: 12),
@@ -1660,13 +1605,16 @@ Future<void> _speakStep(String text) async {
                 dense: true,
                 contentPadding: EdgeInsets.zero,
                 leading: const Icon(Icons.public),
-                title: Text(website, maxLines: 1, overflow: TextOverflow.ellipsis),
-                onTap: () => launchUrl(Uri.parse(website), mode: LaunchMode.externalApplication),
+                title:
+                    Text(website, maxLines: 1, overflow: TextOverflow.ellipsis),
+                onTap: () => launchUrl(Uri.parse(website),
+                    mode: LaunchMode.externalApplication),
               ),
           ],
           const SizedBox(height: 12),
           Wrap(
-            spacing: 8, runSpacing: 8,
+            spacing: 8,
+            runSpacing: 8,
             children: [
               ElevatedButton.icon(
                 icon: const Icon(Icons.bookmark_add_outlined),
@@ -1693,53 +1641,58 @@ Future<void> _speakStep(String text) async {
       ),
     );
   }
+
   Widget _buildCrimeSummaryView(LatLng center) {
     final radius = _crimeRadius; // use current slider default/value
     const days = 30;
 
-  return FutureBuilder<List<CrimeIncident>>(
-    //future: _crimeSource.fetchIncidents(
-    future: _fetchCrimeometerIncidents(
-      center: center,
-      radiusMeters: radius,
-      daysAgo: days,
-    ),
-    builder: (context, snap) {
-      if (snap.connectionState == ConnectionState.waiting) {
-        return const Center(child: CircularProgressIndicator());
-      }
-      if (snap.hasError) {
-        return Center(child: Text('Could not load crime data.'));
-      }
-      final crimes = snap.data ?? const <CrimeIncident>[];
-      if (crimes.isEmpty) {
-        return Padding(
-          padding: const EdgeInsets.all(16),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text('No incidents found',
-                  style: Theme.of(context).textTheme.titleMedium),
-              const SizedBox(height: 8),
-              Text('Within ${(radius / 1609.34).toStringAsFixed(2)} mi • last $days days',
-                  style: Theme.of(context).textTheme.bodySmall?.copyWith(color: Colors.grey[700])),
-              const SizedBox(height: 12),
-              Align(
-                alignment: Alignment.centerLeft,
-                child: OutlinedButton.icon(
-                  icon: const Icon(Icons.tune),
-                  label: const Text('Change radius'),
-                  onPressed: () {
-                    Navigator.pop(context);
-                    _crimeCenter = center;
-                    _showCrimeRadiusSheet();
-                  },
+    return FutureBuilder<List<CrimeIncident>>(
+      //future: _crimeSource.fetchIncidents(
+      future: _fetchCrimeometerIncidents(
+        center: center,
+        radiusMeters: radius,
+        daysAgo: days,
+      ),
+      builder: (context, snap) {
+        if (snap.connectionState == ConnectionState.waiting) {
+          return const Center(child: CircularProgressIndicator());
+        }
+        if (snap.hasError) {
+          return const Center(child: Text('Could not load crime data.'));
+        }
+        final crimes = snap.data ?? const <CrimeIncident>[];
+        if (crimes.isEmpty) {
+          return Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('No incidents found',
+                    style: Theme.of(context).textTheme.titleMedium),
+                const SizedBox(height: 8),
+                Text(
+                    'Within ${(radius / 1609.34).toStringAsFixed(2)} mi • last $days days',
+                    style: Theme.of(context)
+                        .textTheme
+                        .bodySmall
+                        ?.copyWith(color: Colors.grey[700])),
+                const SizedBox(height: 12),
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: OutlinedButton.icon(
+                    icon: const Icon(Icons.tune),
+                    label: const Text('Change radius'),
+                    onPressed: () {
+                      Navigator.pop(context);
+                      _crimeCenter = center;
+                      _showCrimeRadiusSheet();
+                    },
+                  ),
                 ),
-              ),
-            ],
-          ),
-        );
-      }
+              ],
+            ),
+          );
+        }
 
         // Count by offense
         final Map<String, int> byType = {};
@@ -1760,7 +1713,10 @@ Future<void> _speakStep(String text) async {
               const SizedBox(height: 6),
               Text(
                 'Within ${(radius / 1609.34).toStringAsFixed(2)} mi • last $days days',
-                style: Theme.of(context).textTheme.bodySmall?.copyWith(color: Colors.grey[700]),
+                style: Theme.of(context)
+                    .textTheme
+                    .bodySmall
+                    ?.copyWith(color: Colors.grey[700]),
               ),
               const SizedBox(height: 12),
 
@@ -1781,43 +1737,44 @@ Future<void> _speakStep(String text) async {
                 ),
               ),
 
-            // Actions
-            Row(
-              children: [
-                OutlinedButton.icon(
-                  icon: const Icon(Icons.tune),
-                  label: const Text('Change radius'),
-                  onPressed: () {
-                    Navigator.pop(context);
-                    _crimeCenter = center;
-                    _showCrimeRadiusSheet();
-                  },
-                ),
-                const SizedBox(width: 8),
-                ElevatedButton.icon(
-                  icon: const Icon(Icons.list),
-                  label: const Text('View list'),
-                  onPressed: () {
-                    // Reuse your existing list sheet
-                    _lastCrimes = crimes;
-                    Navigator.pop(context);
-                    _showCrimesListSheet();
-                  },
-                ),
-              ],
-            ),
-          ],
-        ),
-      );
-    },
-  );
-}
+              // Actions
+              Row(
+                children: [
+                  OutlinedButton.icon(
+                    icon: const Icon(Icons.tune),
+                    label: const Text('Change radius'),
+                    onPressed: () {
+                      Navigator.pop(context);
+                      _crimeCenter = center;
+                      _showCrimeRadiusSheet();
+                    },
+                  ),
+                  const SizedBox(width: 8),
+                  ElevatedButton.icon(
+                    icon: const Icon(Icons.list),
+                    label: const Text('View list'),
+                    onPressed: () {
+                      // Reuse your existing list sheet
+                      _lastCrimes = crimes;
+                      Navigator.pop(context);
+                      _showCrimesListSheet();
+                    },
+                  ),
+                ],
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
   // Fetch incidents from Crimeometer, place markers and display popup
   _loadCrimesAt({
     required LatLng center,
     required double radiusMeters,
     required int daysAgo,
-    }) async {
+  }) async {
     try {
       // Fetch data from Crimeometer
       final incidents = await _fetchCrimeometerIncidents(
@@ -1833,85 +1790,104 @@ Future<void> _speakStep(String text) async {
       _lastCrimes = incidents;
       _categoryCache.clear();
       _renderFilteredCrimes();
-      // _showCrimesListSheet();
 
-    setState(() {});       // refreshes map
-    _showCrimesListSheet(); // display the crimes on bottom popup 
-  } catch (e) {
-    debugPrint('Crime load error: $e'); // error handling
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Could not load crime data for this area.')),
-      );
+      setState(() {}); // refreshes map
+      _showCrimesListSheet(); // display the crimes on bottom popup
+    } catch (e) {
+      debugPrint('Crime load error: $e'); // error handling
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+              content: Text('Could not load crime data for this area.')),
+        );
+      }
     }
   }
-}
 
-// Assisted by ChatGPT, up-to-date method for retrieving data from crimeometer.
-Future<List<CrimeIncident>> _fetchCrimeometerIncidents({
-  required LatLng center,
-  required double radiusMeters,
-  required int daysAgo,
-  int page = 1,
-  int? pageSize,
-}) async {
-  // Call crimeometer_service
-  final payload = await _crimeService.fetchCrimeData(
-    latitude: center.latitude,
-    longitude: center.longitude,
-    distanceMiles: radiusMeters / 1609.34, // 1 mile, in meters
-    daysAgo: daysAgo,
-    page: page,
-    pageSize: pageSize,
-  );
+  // Assisted by ChatGPT, up-to-date method for retrieving data from crimeometer.
+  Future<List<CrimeIncident>> _fetchCrimeometerIncidents({
+    required LatLng center,
+    required double radiusMeters,
+    required int daysAgo,
+    int page = 1,
+    int? pageSize,
+  }) async {
+    // Call crimeometer_service
+    final payload = await _crimeService.fetchCrimeData(
+      latitude: center.latitude,
+      longitude: center.longitude,
+      distanceMiles: radiusMeters / 1609.34, // 1 mile, in meters
+      daysAgo: daysAgo,
+      page: page,
+      pageSize: pageSize,
+    );
 
-  // Convert incidents to a list of objects
-  final raw = _extractIncidentObjects(payload);
+    // Convert incidents to a list of objects
+    final raw = _extractIncidentObjects(payload);
 
-  // map output to incident model
-  final out = <CrimeIncident>[];
-  for (final it in raw) {
-  if (it is! Map<String, dynamic>) continue;
+    // map output to incident model
+    final out = <CrimeIncident>[];
+    for (final it in raw) {
+      if (it is! Map<String, dynamic>) continue;
 
-  // parse latitude and longitude (used in marker ids)
-  final lat = _pickDouble(it, ['incident_latitude', 'latitude', 'lat']);
-  final lon = _pickDouble(it, ['incident_longitude', 'longitude', 'lon', 'lng']);
-  if (lat == null || lon == null) continue;
+      // parse latitude and longitude (used in marker ids)
+      final lat = _pickDouble(it, ['incident_latitude', 'latitude', 'lat']);
+      final lon =
+          _pickDouble(it, ['incident_longitude', 'longitude', 'lon', 'lng']);
+      if (lat == null || lon == null) continue;
 
-  // grab offense type
-  final offense = _pickString(it, [
-    'incident_offense', 'offense', 'incident_type', 'ucr_offense', 'nibrs_code'
-  ]) ?? 'Unknown';
+      // grab offense type
+      final offense = _pickString(it, [
+            'incident_offense',
+            'offense',
+            'incident_type',
+            'ucr_offense',
+            'nibrs_code'
+          ]) ??
+          'Unknown';
 
-  // grab time
-  final whenStr = _pickString(it, [
-    'incident_date', 'incident_datetime', 'reported_at', 'date', 'datetime'
-  ]);
-  DateTime occurredAt;
-  try {
-    occurredAt = whenStr != null ? DateTime.parse(whenStr).toUtc() : DateTime.now().toUtc();
-  } catch (_) {
-    occurredAt = DateTime.now().toUtc();
-  }
+      // grab time
+      final whenStr = _pickString(it, [
+        'incident_date',
+        'incident_datetime',
+        'reported_at',
+        'date',
+        'datetime'
+      ]);
+      DateTime occurredAt;
+      try {
+        occurredAt = whenStr != null
+            ? DateTime.parse(whenStr).toUtc()
+            : DateTime.now().toUtc();
+      } catch (_) {
+        occurredAt = DateTime.now().toUtc();
+      }
 
-  // grab address
-  final addr = _pickString(it, ['incident_address', 'address', 'formatted_address', 'block_address']);
+      // grab address
+      final addr = _pickString(
+          it, ['incident_address', 'address', 'formatted_address', 'block_address']);
 
-  // look for an incident ID for display purposes
-  final id =
-      _pickString(it, ['incident_id', 'incident_reference', 'incident_uid', 'case_number', 'incident_number', 'id'])
-      ?? '${lat.toStringAsFixed(6)}_${lon.toStringAsFixed(6)}_${occurredAt.millisecondsSinceEpoch}';
+      // look for an incident ID for display purposes
+      final id = _pickString(it, [
+            'incident_id',
+            'incident_reference',
+            'incident_uid',
+            'case_number',
+            'incident_number',
+            'id'
+          ]) ??
+          '${lat.toStringAsFixed(6)}_${lon.toStringAsFixed(6)}_${occurredAt.millisecondsSinceEpoch}';
 
-    // outputs an object of 'CrimeIncident' type
-    out.add(CrimeIncident(
-      id: id,
-      offense: offense,
-      occurredAt: occurredAt,
-      position: LatLng(lat, lon),
-      address: addr,
-      source: 'crimeometer',
-    ));
-  }
+      // outputs an object of 'CrimeIncident' type
+      out.add(CrimeIncident(
+        id: id,
+        offense: offense,
+        occurredAt: occurredAt,
+        position: LatLng(lat, lon),
+        address: addr,
+        source: 'crimeometer',
+      ));
+    }
     return out;
   }
 
@@ -1931,7 +1907,7 @@ Future<List<CrimeIncident>> _fetchCrimeometerIncidents({
     return const [];
   }
 
-  // pickString helper, chatGPT
+  // pickString helper
   String? _pickString(Map<String, dynamic> m, List<String> keys) {
     for (final k in keys) {
       final v = m[k];
@@ -1942,7 +1918,7 @@ Future<List<CrimeIncident>> _fetchCrimeometerIncidents({
     return null;
   }
 
-  // pickDouble helper, chatGPT
+  // pickDouble helper
   double? _pickDouble(Map<String, dynamic> m, List<String> keys) {
     for (final k in keys) {
       final v = m[k];
@@ -1958,38 +1934,39 @@ Future<List<CrimeIncident>> _fetchCrimeometerIncidents({
   // Return category of an incident based on offense title
   // Offense categories are laid out in utils/crimefilter.dart
   Set<CrimeCategory> _catsFor(CrimeIncident c) {
-    return _categoryCache.putIfAbsent(c.id, () => categoriesForOffense(c.offense));
+    return _categoryCache.putIfAbsent(
+        c.id, () => categoriesForOffense(c.offense));
   }
 
   // Returns a list of incidents that match filter
   // If no filter is applied, returns the list as it was
-List<CrimeIncident> _applyFilters(List<CrimeIncident> all) {
-  var cur = all;
+  List<CrimeIncident> _applyFilters(List<CrimeIncident> all) {
+    var cur = all;
 
-  // time filter
-  // return crimes that have occured after (now - timeframe)
-  if (_timeFilterDays > 0) {
-    final cutoff = DateTime.now().toUtc().subtract(Duration(days: _timeFilterDays));
-    cur = cur.where((c) => c.occurredAt.isAfter(cutoff)).toList();
+    // time filter
+    // return crimes that have occured after (now - timeframe)
+    if (_timeFilterDays > 0) {
+      final cutoff =
+          DateTime.now().toUtc().subtract(Duration(days: _timeFilterDays));
+      cur = cur.where((c) => c.occurredAt.isAfter(cutoff)).toList();
+    }
+
+    // category filter
+    // if any category selected matches, add to list
+    // this allows for selection of multiple categories
+    if (_activeFilters.isNotEmpty) {
+      cur = cur.where((c) {
+        final cats = _catsFor(c);
+        return cats.any(_activeFilters.contains);
+      }).toList();
+    }
+
+    return cur;
   }
-
-  // category filter
-  // if any category selected matches, add to list
-  // this allows for selection of multiple categories
-  if (_activeFilters.isNotEmpty) {
-    cur = cur.where((c) {
-      final cats = _catsFor(c);
-      return cats.any(_activeFilters.contains);
-    }).toList();
-  }
-
-  return cur;
-}
 
   /// Display map markers as defined by the filter
   /// If the filter is empty, all are displayed (see _applyFilters)
   void _renderFilteredCrimes() {
-
     final filtered = _applyFilters(_lastCrimes); // filtered crime list
 
     // Remove old crime markers
@@ -2000,16 +1977,17 @@ List<CrimeIncident> _applyFilters(List<CrimeIncident> all) {
     for (final c in filtered) {
       final sev = classifySeverity(c.offense);
       final mId = MarkerId('$_crimePrefix${c.id}');
-      final pos = _jitterIfDuplicate(c.position); // jitter helper call, overlapping incidents move a few units
+      final pos = _jitterIfDuplicate(
+          c.position); // jitter helper call, overlapping incidents move a few units
 
-      // place marker at position 
+      // place marker at position
       markers[mId] = Marker(
         markerId: mId,
         position: pos,
         icon: BitmapDescriptor.defaultMarkerWithHue(sev.hue),
         infoWindow: InfoWindow(
           title: '${c.offense} (${sev.label})', //offense title and severity on click
-          snippet: _crimeSnippet(c), 
+          snippet: _crimeSnippet(c),
         ),
       );
     }
@@ -2031,7 +2009,8 @@ List<CrimeIncident> _applyFilters(List<CrimeIncident> all) {
       // Apply time filter only, before category filter
       final base = () {
         if (localDays <= 0) return _lastCrimes;
-        final cutoff = DateTime.now().toUtc().subtract(Duration(days: localDays));
+        final cutoff =
+            DateTime.now().toUtc().subtract(Duration(days: localDays));
         return _lastCrimes.where((c) => c.occurredAt.isAfter(cutoff)).toList();
       }();
 
@@ -2061,7 +2040,7 @@ List<CrimeIncident> _applyFilters(List<CrimeIncident> all) {
         return StatefulBuilder(builder: (ctx, setLocal) {
           Widget chip(CrimeCategory cat, String text) {
             final sel = local.contains(cat);
-            // options are instances of FilterChips 
+            // options are instances of FilterChips
             return FilterChip(
               label: Text(label(cat, text)),
               selected: sel,
@@ -2075,7 +2054,8 @@ List<CrimeIncident> _applyFilters(List<CrimeIncident> all) {
           }
 
           // Label for date and time slider
-          String daysLabel(int d) => d == 0 ? 'All time' : 'Last $d day${d == 1 ? "" : "s"}';
+          String daysLabel(int d) =>
+              d == 0 ? 'All time' : 'Last $d day${d == 1 ? "" : "s"}';
 
           // Visual for filter popup
           return Padding(
@@ -2084,11 +2064,14 @@ List<CrimeIncident> _applyFilters(List<CrimeIncident> all) {
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text('Filter crimes', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600)),
+                const Text('Filter crimes',
+                    style:
+                        TextStyle(fontSize: 18, fontWeight: FontWeight.w600)),
                 const SizedBox(height: 12),
 
                 // Slider for days since filter
-                Text('Timeframe: ${daysLabel(localDays)}', style: const TextStyle(fontWeight: FontWeight.w500)),
+                Text('Timeframe: ${daysLabel(localDays)}',
+                    style: const TextStyle(fontWeight: FontWeight.w500)),
                 Slider(
                   value: localDays.toDouble(),
                   min: 0,
@@ -2098,7 +2081,8 @@ List<CrimeIncident> _applyFilters(List<CrimeIncident> all) {
                   onChanged: (v) {
                     setLocal(() {
                       localDays = v.round();
-                      counts = computeCounts(); // refresh counts as the slider moves
+                      counts =
+                          computeCounts(); // refresh counts as the slider moves
                     });
                   },
                 ),
@@ -2106,7 +2090,8 @@ List<CrimeIncident> _applyFilters(List<CrimeIncident> all) {
 
                 // chips for each category
                 Wrap(
-                  spacing: 8, runSpacing: 8,
+                  spacing: 8,
+                  runSpacing: 8,
                   children: [
                     chip(CrimeCategory.violent, 'Violent'),
                     chip(CrimeCategory.theft, 'Theft'),
@@ -2133,7 +2118,7 @@ List<CrimeIncident> _applyFilters(List<CrimeIncident> all) {
                       child: const Text('Reset'),
                     ),
                     const Spacer(),
-                    // Apply settings button (Task mentions a debouncer, after testing, a button is more logical)
+                    // Apply settings button
                     ElevatedButton(
                       onPressed: () {
                         Navigator.pop(ctx);
@@ -2155,37 +2140,114 @@ List<CrimeIncident> _applyFilters(List<CrimeIncident> all) {
     );
   }
 
+  // AI Assistant recommended this method for 'jittering' when markers are atop eachother
+  // Tried it out, looks more appealing than without
 
-    // AI Assistant reccomended this method for 'jittering' when markers are atop eachother
-    // Tried it out, looks more appealing than without
+  //track how many markers occur at nearly the same coords
+  final Map<String, int> _coordHitCounts = {};
 
-    //track how many markers occur at nearly the same coords
-    final Map<String, int> _coordHitCounts = {};
+  // if two markers occur on the same coords, count a 'hit' and adjust marker
+  LatLng _jitterIfDuplicate(LatLng pos) {
+    // Round so very close points are considered the same for stacking purposes.
+    final key =
+        '${pos.latitude.toStringAsFixed(5)},${pos.longitude.toStringAsFixed(5)}';
+    final hit = (_coordHitCounts[key] ?? 0);
+    _coordHitCounts[key] = hit + 1;
 
-    // if two markers occur on the same coords, count a 'hit' and adjust marker
-    LatLng _jitterIfDuplicate(LatLng pos) {
-      // Round so very close points are considered the same for stacking purposes.
-      final key = '${pos.latitude.toStringAsFixed(5)},${pos.longitude.toStringAsFixed(5)}';
-      final hit = (_coordHitCounts[key] ?? 0);
-      _coordHitCounts[key] = hit + 1;
+    if (hit == 0) return pos; // first marker stays exact
 
-      if (hit == 0) return pos; // first marker stays exact
+    // Spread overlapping pins in small rings around the original point.
+    const double stepMeters = 6.0; // ≈6 m between rings
+    final ring = 1 + (hit ~/ 6); // 6 markers per ring
+    final slot = hit % 6; // position within the ring [0..5]
+    final angle = (slot / 6.0) * 2 * math.pi;
 
-      // Spread overlapping pins in small rings around the original point.
-      const double stepMeters = 6.0;           // ≈6 m between rings
-      final ring = 1 + (hit ~/ 6);            // 6 markers per ring
-      final slot = hit % 6;                  // position within the ring [0..5]
-      final angle = (slot / 6.0) * 2 * math.pi;
+    final rMeters = stepMeters * ring;
 
-      final rMeters = stepMeters * ring;
+    // meters → degrees
+    final dLat = rMeters / 111111.0;
+    final dLon =
+        rMeters / (111111.0 * math.cos(pos.latitude * math.pi / 180));
 
-      // meters → degrees
-      final dLat = rMeters / 111_111.0;
-      final dLon = rMeters / (111_111.0 * math.cos(pos.latitude * math.pi / 180));
+    return LatLng(
+      pos.latitude + dLat * math.sin(angle),
+      pos.longitude + dLon * math.cos(angle),
+    );
+  }
 
-      return LatLng(
-        pos.latitude  + dLat * math.sin(angle),
-        pos.longitude + dLon * math.cos(angle),
-      );
+  /// Construction zones: stream + overlays + route intersection warning
+  void _listenForConstructionZones() {
+    _constructionSub =
+        _constructionService.getActiveZones().listen((zones) {
+      final Set<Circle> circles = {};
+      final Set<Polygon> polygons = {};
+      for (final z in zones) {
+        final id = (z['id'] as String?) ?? UniqueKey().toString();
+        if (z['polygon'] != null && (z['polygon'] as List).isNotEmpty) {
+          polygons.add(
+            Polygon(
+              polygonId: PolygonId(id),
+              points: (z['polygon'] as List)
+                  .map((p) => LatLng(
+                        (p['lat'] as num).toDouble(),
+                        (p['lng'] as num).toDouble(),
+                      ))
+                  .toList(),
+              strokeColor: Colors.orange.shade800,
+              fillColor: Colors.orange.withOpacity(0.3),
+              strokeWidth: 2,
+            ),
+          );
+        } else if (z['lat'] != null && z['lng'] != null) {
+          circles.add(
+            Circle(
+              circleId: CircleId(id),
+              center: LatLng(
+                (z['lat'] as num).toDouble(),
+                (z['lng'] as num).toDouble(),
+              ),
+              radius: ((z['radius'] as num?)?.toDouble()) ?? 100.0,
+              strokeColor: Colors.orange.shade800,
+              fillColor: Colors.orange.withOpacity(0.3),
+              strokeWidth: 2,
+            ),
+          );
+        }
+      }
+      if (!mounted) return;
+      setState(() {
+        _constructionCircles = circles;
+        _constructionPolygons = polygons;
+      });
+      _checkRouteForConstruction();
+    });
+  }
+
+  void _checkRouteForConstruction() {
+    if (polylines.isEmpty) return;
+    final route = polylines.values.first.points;
+    // Check circle zones
+    for (final point in route) {
+      for (final c in _constructionCircles) {
+        final d = Geolocator.distanceBetween(point.latitude, point.longitude,
+            c.center.latitude, c.center.longitude);
+        if (d <= c.radius) {
+          _warnConstruction();
+          return;
+        }
+      }
     }
+    // polygon hit-test could be added if needed with point-in-polygon
+  }
+
+  void _warnConstruction() {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('⚠️ Route passes through a construction zone.'),
+        backgroundColor: Colors.orange,
+        duration: Duration(seconds: 5),
+      ),
+    );
+  }
 }
