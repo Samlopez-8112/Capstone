@@ -56,24 +56,24 @@ class _AuthScreenState extends State<AuthScreen>{
 
         try {
           print("📧 Writing new mail doc to Firestore...");
+          final uid = userCred.user!.uid;
+          final encryptedUid = await EncryptionService.encrypt(uid);
+
+          final lockUrl = 'https://us-central1-capstoneproject-sf2025.cloudfunctions.net/lockAccount?uid=$encryptedUid';
 
           await FirebaseFirestore.instance.collection('mail').add({
             'to': email,
             'message': {
               'subject': 'New Device Login Detected',
-              'text': '''
-Hello,
+              'html': '''
+<p>Hello,</p>
+<p>A new device just logged into your account.</p>
+<p>Device ID: $deviceId<br/>
+Time: ${DateTime.now().toUtc()}</p>
 
-A new device just logged into your account.
+<p><a href="$lockUrl">Click here to lock your account</a> if this wasn't you.</p>
 
-Device ID: $deviceId
-Time: ${DateTime.now().toUtc()}
-
-If this was you, no action is needed.
-If not, please reset your password immediately.
-
-Stay safe, 
-Bypassr Security Team
+<p>Stay safe,<br/>Bypassr Security Team</p>
 '''
           }
         });
