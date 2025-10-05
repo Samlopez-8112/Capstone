@@ -31,6 +31,7 @@ import '../utils/crimefilter.dart';
 import 'dart:math' as math;
 import '../offline_maps/offline_maps_page.dart';
 import '../services/heatmap_logic.dart';
+import 'package:wakelock_plus/wakelock_plus.dart'; // keep app awake
 import '../services/construction_service.dart'; // construction zones stream
 
 class MapPage extends StatefulWidget {
@@ -39,12 +40,13 @@ class MapPage extends StatefulWidget {
   State<MapPage> createState() => _MapPageState();
 }
 
-class _MapPageState extends State<MapPage> {
+class _MapPageState extends State<MapPage> with WidgetsBindingObserver{ //BindingObserver used to keep app open
   final Completer<GoogleMapController> _mapController = Completer();
   final Location _location = Location();
 
   LatLng? _currentPosition; // user’s current location
   bool isFollowingUser = true;
+  bool _isProgrammaticCameraMove = false; //differentiate app-based camera movement
   bool _isDialOpen = false;
 
   // fields for crime filter
@@ -134,6 +136,9 @@ class _MapPageState extends State<MapPage> {
     });
     fixPinnedLocationData();
 
+    WidgetsBinding.instance.addObserver(this); // Observe app lifecycle, enable wakelock on launch
+    WakelockPlus.enable();
+
     // Listen for construction zones
     _listenForConstructionZones();
 
@@ -157,14 +162,32 @@ class _MapPageState extends State<MapPage> {
       }
     });
   }
-
+ 
+  // Logic for cleanup on close of app
   @override
   void dispose() {
     _heatmap.dispose();
     _positionStream?.cancel();
     _constructionSub?.cancel();
+
+    WakelockPlus.disable(); // on close allow phone to autosleep again
+    WidgetsBinding.instance.removeObserver(this);
     super.dispose();
   }
+
+  // Handling logic for Wakelock when different screens are accessed
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) { // enable wakelock when map is open
+      WakelockPlus.enable();
+      } else if ( // disable wakelock for closed app
+        state == AppLifecycleState.inactive ||
+        state == AppLifecycleState.paused ||
+        state == AppLifecycleState.detached) {
+      WakelockPlus.disable();
+    }
+  }
+
 
   void _checkUserAuthentication() {
     final user = FirebaseAuth.instance.currentUser;
@@ -224,6 +247,11 @@ class _MapPageState extends State<MapPage> {
                       ? {..._heatmap.circles, ..._constructionCircles}
                       : _constructionCircles,
                   polygons: _constructionPolygons,
+                  onCameraMoveStarted: () { 
+                    if (!_isProgrammaticCameraMove && isFollowingUser) {
+                      setState(() => isFollowingUser = false);
+                    }
+                  },
                   onMapCreated: (controller) {
                     _mapController.complete(controller);
                     _heatmap.scheduleBoundsRefresh(
@@ -285,9 +313,7 @@ class _MapPageState extends State<MapPage> {
                         );
                       });
 
-                      controller.animateCamera(
-                        CameraUpdate.newLatLngZoom(coords, 13),
-                      );
+                      await _animateCamera(CameraUpdate.newLatLngZoom(coords, 13));
 
                       if (_origin != null && _destination != null) {
                         _createRoute();
@@ -679,9 +705,19 @@ class _MapPageState extends State<MapPage> {
     });
   }
 
-  Future<void> _cameraTo(LatLng pos) async {
-    final controller = await _mapController.future;
-    controller.animateCamera(CameraUpdate.newLatLngZoom(pos, 13));
+  
+  //
+  Future<void> _animateCamera(CameraUpdate update) async {
+    _isProgrammaticCameraMove = true;
+    try {
+      final controller = await _mapController.future;
+      await controller.animateCamera(update);
+    } finally {
+      _isProgrammaticCameraMove = false;
+    }
+  }
+Future<void> _cameraTo(LatLng pos) async {
+    await _animateCamera(CameraUpdate.newLatLngZoom(pos, 13));
   }
 
   /// Traffic-aware routing (Directions API with departure_time=now)
@@ -1247,8 +1283,7 @@ class _MapPageState extends State<MapPage> {
             // on tap of a list object, move the camera to it's coordinates, close modal
             onTap: () async {
               final controller = await _mapController.future;
-              controller.animateCamera(
-                  CameraUpdate.newLatLngZoom(c.position, 15));
+              await _animateCamera(CameraUpdate.newLatLngZoom(c.position, 15));
               Navigator.pop(context);
             },
           );
