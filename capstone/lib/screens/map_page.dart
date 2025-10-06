@@ -537,16 +537,15 @@ class _MapPageState extends State<MapPage> with WidgetsBindingObserver{ //Bindin
                       ),
                       child: Column(
                         children: [
-                          const Text("Search Radius (m)",
+                          const Text("Search Radius (mi)",
                               style: TextStyle(fontWeight: FontWeight.bold)),
                           Slider(
-                            value: _searchRadius,
-                            min: 100,
-                            max: 5000,
+                            value: _searchRadius / 1609.34,
+                            min: 0.1,
+                            max: 5.0,
                             divisions: 49,
-                            label: '${_searchRadius.round()}m',
-                            onChanged: (value) =>
-                                setState(() => _searchRadius = value),
+                            label: '${(_searchRadius / 1609.34).toStringAsFixed(1)} mi',
+                            onChanged: (value) => setState(() => _searchRadius = value * 1609.34),
                           ),
                         ],
                       ),
@@ -1027,7 +1026,7 @@ Future<void> _cameraTo(LatLng pos) async {
             title: Text(name),
             subtitle: (lat != null && lng != null)
                 ? Text(
-                    '$vicinity • ${_calculateDistanceMeters(_currentPosition!, lat, lng).round()}m')
+                    '$vicinity • ${(_calculateDistanceMeters(_currentPosition!, lat, lng) / 1609.34).toStringAsFixed(1)} mi')
                 : Text(vicinity),
             trailing: (lat != null && lng != null)
                 ? IconButton(
@@ -1372,27 +1371,27 @@ Future<void> _cameraTo(LatLng pos) async {
                   // Sheet title and current radius value displayed here
                   Row(
                     children: [
-                      const Text('Crime radius (m)',
+                      const Text('Crime radius (mi)',
                           style: TextStyle(fontWeight: FontWeight.bold)),
                       const Spacer(),
-                      Text('${_crimeRadius.round()} m'),
+                      Text('${(_crimeRadius / 1609.34).toStringAsFixed(1)} mi'),
                     ],
                   ),
                   // Radius slider
                   Slider(
-                    value: _crimeRadius,
-                    min: 100,
-                    max: 5000,
+                    value: _crimeRadius / 1609.34,
+                    min: 0.1,
+                    max: 5.0,
                     divisions: 49,
                     onChanged: (v) {
-                      setLocal(() => _crimeRadius = v);
+                      setLocal(() => _crimeRadius = v * 1609.34);
                     }, // update label live
                     onChangeEnd: (v) async {
                       Navigator.pop(ctx); // close the radius bar once selected
                       if (_crimeCenter != null) {
                         await _loadCrimesAt(
                           center: _crimeCenter!,
-                          radiusMeters: v,
+                          radiusMeters: v * 1609.34,
                           daysAgo: 30, // shows crimes within 30 day period
                         );
                       }
@@ -1494,7 +1493,7 @@ Future<void> _cameraTo(LatLng pos) async {
             const SizedBox(height: 8),
             Text(label, style: Theme.of(context).textTheme.bodyMedium),
             const SizedBox(height: 6),
-            Text('~${distM}m away',
+            Text('~${(distM / 1609.34).toStringAsFixed(1)} mi away',
                 style: Theme.of(context)
                     .textTheme
                     .bodySmall
@@ -1619,7 +1618,7 @@ Future<void> _cameraTo(LatLng pos) async {
           Text(address, style: Theme.of(context).textTheme.bodyMedium),
           const SizedBox(height: 6),
           Text(
-            'LatLng: ${pos.latitude.toStringAsFixed(5)}, ${pos.longitude.toStringAsFixed(5)} • ${distM}m away',
+            'LatLng: ${pos.latitude.toStringAsFixed(5)}, ${pos.longitude.toStringAsFixed(5)} • \${(distM / 1609.34).toStringAsFixed(1)} mi away',
             style: Theme.of(context)
                 .textTheme
                 .bodySmall
