@@ -255,30 +255,52 @@ class _RateAreaScreenState extends State<RateAreaScreen> {
   }
 
   Future<void> _saveRating(String uid, double lat, double lng) async {
-    // Build a location key that includes radius; you can swap this for geohash+radius
-    final locationKey =
-        "${lat.toStringAsFixed(5)},${lng.toStringAsFixed(5)}:r=${_radiusMiles.toStringAsFixed(2)}mi";
+  final locationKey =
+      "${lat.toStringAsFixed(5)},${lng.toStringAsFixed(5)}:r=${_radiusMiles.toStringAsFixed(2)}mi";
 
-    // One rating per user per (locationKey)
-    final ratingDoc = FirebaseFirestore.instance
-        .collection('crowdRatings')
-        .doc(locationKey)
-        .collection('ratings')
-        .doc(uid);
+  final ratingDoc = FirebaseFirestore.instance
+      .collection('crowdRatings')
+      .doc(locationKey)
+      .collection('ratings')
+      .doc(uid);
 
-    await ratingDoc.set({
-      'userId': uid,
-      'center': {'lat': lat, 'lng': lng},
-      'radiusMiles': _radiusMiles,
-      'rating': _rating,
-      'reasons': _selectedReasons.toList(),
-      'personalExperienceDetail': _personalExperienceText.trim(),
-      'timestamp': FieldValue.serverTimestamp(),
+  try {
+    await FirebaseFirestore.instance.runTransaction((tx) async {
+      final snapshot = await tx.get(ratingDoc);
+      if (snapshot.exists) {
+        throw FirebaseException(
+          plugin: 'cloud_firestore',
+          code: 'already-exists',
+          message: 'You’ve already rated this area.',
+        );
+      }
+
+      tx.set(ratingDoc, {
+        'userId': uid,
+        'center': {'lat': lat, 'lng': lng},
+        'radiusMiles': _radiusMiles,
+        'rating': _rating,
+        'reasons': _selectedReasons.toList(),
+        'personalExperienceDetail': _personalExperienceText.trim(),
+        'timestamp': FieldValue.serverTimestamp(),
+      });
     });
 
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(content: Text('Thanks! Your rating was saved.')),
     );
+  } on FirebaseException catch (e) {
+    if (e.code == 'already-exists' || e.code == 'permission-denied') {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('You’ve already rated this area.')),
+      );
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error saving rating: ${e.message}')),
+      );
+    }
   }
+}
+  
 }
