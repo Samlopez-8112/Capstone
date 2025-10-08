@@ -3,6 +3,7 @@ import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 
 class HeatmapManager {
   final Set<Circle> _heatCircles = {};
@@ -54,13 +55,14 @@ class HeatmapManager {
         .orderBy('center.lat')
         .limit(1500)
         .snapshots()
-        .listen((snap) {
+        .listen((snap) async {
       final now = DateTime.now();
       final Map<String, List<Map<String, dynamic>>> grouped = {};
 
       // Group ratings by lat,lng,radius
       for (final doc in snap.docs) {
         final d = doc.data();
+        final userId = d['userId'];
         final lat = (d['center']?['lat'] as num?)?.toDouble();
         final lng = (d['center']?['lng'] as num?)?.toDouble();
         final rating = (d['rating'] as num?)?.toDouble();
@@ -69,6 +71,12 @@ class HeatmapManager {
 
         if (lat == null || lng == null || rating == null) continue;
         if (lng < west || lng > east) continue;
+
+        int endorsementCount = 0;
+        try{
+          final endorsementSnap = await doc.reference.collection('endorsements').get();
+          endorsementCount = endorsementSnap.size;
+        } catch(_){}
 
         final key =
             "${lat.toStringAsFixed(5)},${lng.toStringAsFixed(5)}:r=${radiusMi.toStringAsFixed(2)}";
@@ -80,6 +88,8 @@ class HeatmapManager {
           'lat': lat,
           'lng': lng,
           'radius': radiusMi,
+          'userId': userId,
+          'endorsementCount': endorsementCount,
         });
       }
 
@@ -149,6 +159,15 @@ class HeatmapManager {
             .whereType<String>()
             .toList();
 
+        final userIds = group
+          .map((r) => r['userId'] as String?)
+          .whereType<String>()
+          .toSet();
+
+        final totalEndorsements = group
+          .map((r) => r['endorsementCount'] as int? ?? 0)
+          .fold(0,(a, b) => a + b);
+
         meta[id] = {
           'avgRating': avgRating,
           'reasons': allReasons,
@@ -157,6 +176,8 @@ class HeatmapManager {
           'radiusMiles': radiusMi,
           'center': {'lat': lat, 'lng': lng},
           'timestamp': latest,
+          'userIds': userIds?.toList() ?? [],
+          'endorsements': totalEndorsements,
         };
       }
 
@@ -226,6 +247,13 @@ class HeatmapManager {
       reasons: allReasons,
       experiences: allExperiences,
       timestamp: latest,
+      center: selectedData.first['center'],
+      radius: selectedData.first['radiusMiles'],
+      userIds: selectedData.expand((d) => d['userIds'] as List).toList(), 
+      endorsements: selectedData
+        .map((d) => d['endorsements'] as int? ?? 0)
+        .fold(0,(a, b) => a + b),
+
     );
   }
 
@@ -237,6 +265,10 @@ class HeatmapManager {
     required List reasons,
     required List experiences,
     required DateTime? timestamp,
+    required Map center,
+    required double radius,
+    required List userIds,
+    required int endorsements,
   }) {
     // Aggregate reasons with counts
     final reasonCounts = <String, int>{};
@@ -267,12 +299,36 @@ class HeatmapManager {
               ]),
               Text('$count ratings submitted',
                   style: Theme.of(context).textTheme.bodySmall),
+                Text('$endorsements endorsements',
+                  style: Theme.of(context).textTheme.bodySmall),
               if (timestamp != null)
                 Text('Updated: ${timestamp.toLocal()}',
                     style: Theme.of(context)
                         .textTheme
                         .bodySmall
                         ?.copyWith(color: Colors.grey[600])),
+              const SizedBox(height: 16),
+              Center(
+                child: ElevatedButton.icon(
+                  icon: const Icon(Icons.thumb_up_outlined),
+                  label: const Text('Endorse this area'),
+                  onPressed: () async {
+                    final userId = FirebaseAuth.instance.currentUser?.uid;
+                    if (userId != null && center['lat'] != null && center['lng'] != null) {
+                    for (final creatorId in userIds) {
+                      final docPath = 
+                        'crowdRatings/${center['lat'].toStringAsFixed(5)},${center['lng'].toStringAsFixed(5)}:r=${radius.toStringAsFixed(2)}mi/ratings/$creatorId';
+                        await endorseRating(docPath, userId);
+                    }
+                    if (context.mounted){
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text('Thanks for your endorsement!')),
+                        );
+                    }
+                  }
+                },
+              ),
+            ),
 
               const SizedBox(height: 12),
               Text('Reasons', style: Theme.of(context).textTheme.labelLarge),
@@ -338,4 +394,27 @@ class HeatmapManager {
     final alpha = (40 + (t * 120)).round();
     return col.withAlpha(alpha);
   }
+
+  Future<void> endorseRating(String ratingDocPath, String endorserUid) async {
+  print("Endorsing rating at: $ratingDocPath");
+  final docRef = FirebaseFirestore.instance.doc(ratingDocPath);
+  final endorsementRef = docRef.collection('endorsements').doc(endorserUid);
+
+  try {
+    final alreadyEndorsed = await endorsementRef.get();
+    if (alreadyEndorsed.exists) {
+      print("Already endorsed by $endorserUid");
+      return;
+    }
+
+    await endorsementRef.set({
+      'userId': endorserUid,
+      'timestamp': FieldValue.serverTimestamp(),
+    });
+
+    print("Endorsement saved successfully for $endorserUid");
+  } catch (e) {
+    print("Error endorsing rating: $e");
+  }
+}
 }

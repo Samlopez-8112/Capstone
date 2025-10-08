@@ -31,7 +31,10 @@ import '../utils/crimefilter.dart';
 import 'dart:math' as math;
 import '../offline_maps/offline_maps_page.dart';
 import '../services/heatmap_logic.dart';
+import 'package:wakelock_plus/wakelock_plus.dart'; // keep app awake
 import '../services/construction_service.dart'; // construction zones stream
+import '../services/crime_heatmap.dart'; // crime heatmap 
+
 
 class MapPage extends StatefulWidget {
   const MapPage({super.key});
@@ -39,12 +42,13 @@ class MapPage extends StatefulWidget {
   State<MapPage> createState() => _MapPageState();
 }
 
-class _MapPageState extends State<MapPage> {
+class _MapPageState extends State<MapPage> with WidgetsBindingObserver{ //BindingObserver used to keep app open
   final Completer<GoogleMapController> _mapController = Completer();
   final Location _location = Location();
 
   LatLng? _currentPosition; // user’s current location
   bool isFollowingUser = true;
+  bool _isProgrammaticCameraMove = false; //differentiate app-based camera movement
   bool _isDialOpen = false;
 
   // fields for crime filter
@@ -114,6 +118,21 @@ class _MapPageState extends State<MapPage> {
   // Heatmap state
   final HeatmapManager _heatmap = HeatmapManager();
 
+  // Crime Heatmap instance
+  final CrimeHeatmap _crimeHeat = CrimeHeatmap();
+  Set<Circle> _crimeHeatCircles = {};
+  bool _showCrimeHeatmap = true; // bools for toggling markers and heatmap
+  bool _showCrimeMarkers = true;
+  LatLngBounds? _crimeViewport;
+
+  Set<Circle> get _allCircles { // _allCircles variable holds community and crime and construction circles.
+    final base = <Circle>{};
+    if (_heatmap.showHeatmap) base.addAll(_heatmap.circles); 
+    base.addAll(_constructionCircles);                       
+    if (_showCrimeHeatmap && _isCrimeViewActive) base.addAll(_crimeHeatCircles);
+    return base;
+  }
+
   // maps each circleId to rating doc fields for the details bottom sheet
   final Map<CircleId, Map<String, dynamic>> _circleMeta = {};
 
@@ -133,6 +152,9 @@ class _MapPageState extends State<MapPage> {
       getPolylinePoints().then(generatePolyline);
     });
     fixPinnedLocationData();
+
+    WidgetsBinding.instance.addObserver(this); // Observe app lifecycle, enable wakelock on launch
+    WakelockPlus.enable();
 
     // Listen for construction zones
     _listenForConstructionZones();
@@ -157,14 +179,32 @@ class _MapPageState extends State<MapPage> {
       }
     });
   }
-
+ 
+  // Logic for cleanup on close of app
   @override
   void dispose() {
     _heatmap.dispose();
     _positionStream?.cancel();
     _constructionSub?.cancel();
+
+    WakelockPlus.disable(); // on close allow phone to autosleep again
+    WidgetsBinding.instance.removeObserver(this);
     super.dispose();
   }
+
+  // Handling logic for Wakelock when different screens are accessed
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) { // enable wakelock when map is open
+      WakelockPlus.enable();
+      } else if ( // disable wakelock for closed app
+        state == AppLifecycleState.inactive ||
+        state == AppLifecycleState.paused ||
+        state == AppLifecycleState.detached) {
+      WakelockPlus.disable();
+    }
+  }
+
 
   void _checkUserAuthentication() {
     final user = FirebaseAuth.instance.currentUser;
@@ -217,22 +257,28 @@ class _MapPageState extends State<MapPage> {
                     zoom: 13,
                   ),
                   myLocationEnabled: true,
-                  markers: Set<Marker>.of(markers.values),
+                  markers: _showCrimeMarkers ? Set<Marker>.of(markers.values) : <Marker>{},
                   polylines: Set<Polyline>.of(polylines.values),
-                  // Combine heatmap circles (if visible) with construction circles
-                  circles: _heatmap.showHeatmap
-                      ? {..._heatmap.circles, ..._constructionCircles}
-                      : _constructionCircles,
+                  // _allCircles holds community, crime, and construction circles.
+                  circles: _allCircles, 
                   polygons: _constructionPolygons,
+                  onCameraMoveStarted: () { 
+                    if (!_isProgrammaticCameraMove && isFollowingUser) {
+                      setState(() => isFollowingUser = false);
+                    }
+                  },
                   onMapCreated: (controller) {
                     _mapController.complete(controller);
-                    _heatmap.scheduleBoundsRefresh(
-                        _mapController.future, () => setState(() {}));
+                    _heatmap.scheduleBoundsRefresh(_mapController.future, () => setState(() {}));
+                    _rebuildCrimeHeatmap(); // initialize the crime heatmap
                   },
-                  onCameraMove: (_) => _heatmap.scheduleBoundsRefresh(
-                      _mapController.future, () => setState(() {})),
-                  onCameraIdle: () => _heatmap.refreshHeatForViewport(
-                      _mapController.future, () => setState(() {})),
+                  onCameraMove: (_) {
+                    _heatmap.scheduleBoundsRefresh(_mapController.future, () => setState(() {}));
+                  },
+                  onCameraIdle: () {
+                    _heatmap.refreshHeatForViewport(_mapController.future, () => setState(() {}));
+                  },
+
                   onLongPress: _onMapLongPress,
                   onTap: (pos) => _heatmap.handleMapTap(context, pos),
                 ),
@@ -250,6 +296,59 @@ class _MapPageState extends State<MapPage> {
                         icon: const Icon(Icons.filter_alt_outlined),
                         tooltip: 'Filter crimes',
                         onPressed: _showCrimeFilterSheet,
+                      ),
+                    ),
+                  ),
+
+                // Toggle markers icon 
+                if (_isCrimeViewActive)
+                  Positioned(
+                    top: 220,
+                    right: 16,
+                    child: Material(
+                      color: Colors.white,
+                      elevation: 2,
+                      shape: const CircleBorder(),
+                      child: IconButton(
+                        icon: Icon(
+                          _showCrimeMarkers ? Icons.place : Icons.place_outlined,
+                          color: _showCrimeMarkers
+                              ? Theme.of(context).colorScheme.primary
+                              : Colors.grey[500],
+                        ),
+                        tooltip: _showCrimeMarkers ? 'Hide crime markers' : 'Show crime markers',
+                        onPressed: () {
+                          setState(() => _showCrimeMarkers = !_showCrimeMarkers);
+                        },
+                      ),
+                    ),
+                  ),
+
+                // Toggle heatmap button
+                if (_isCrimeViewActive)
+                  Positioned(
+                    top: 274,
+                    right: 16,
+                    child: Material(
+                      color: Colors.white,
+                      elevation: 2,
+                      shape: const CircleBorder(),
+                      child: IconButton(
+                        icon: Icon(
+                          _showCrimeHeatmap ? Icons.blur_on : Icons.blur_linear,
+                          color: _showCrimeHeatmap
+                              ? Theme.of(context).colorScheme.primary
+                              : Colors.grey[500],
+                        ),
+                        tooltip: _showCrimeHeatmap ? 'Hide heatmap' : 'Show heatmap',
+                        onPressed: () {
+                          setState(() => _showCrimeHeatmap = !_showCrimeHeatmap);
+                          if (_showCrimeHeatmap) {
+                            _rebuildCrimeHeatmap(); // builds from _lastRenderedCrimes
+                          } else {
+                            _crimeHeatCircles = {};
+                          }
+                        },
                       ),
                     ),
                   ),
@@ -285,9 +384,7 @@ class _MapPageState extends State<MapPage> {
                         );
                       });
 
-                      controller.animateCamera(
-                        CameraUpdate.newLatLngZoom(coords, 13),
-                      );
+                      await _animateCamera(CameraUpdate.newLatLngZoom(coords, 13));
 
                       if (_origin != null && _destination != null) {
                         _createRoute();
@@ -511,16 +608,15 @@ class _MapPageState extends State<MapPage> {
                       ),
                       child: Column(
                         children: [
-                          const Text("Search Radius (m)",
+                          const Text("Search Radius (mi)",
                               style: TextStyle(fontWeight: FontWeight.bold)),
                           Slider(
-                            value: _searchRadius,
-                            min: 100,
-                            max: 5000,
+                            value: _searchRadius / 1609.34,
+                            min: 0.1,
+                            max: 5.0,
                             divisions: 49,
-                            label: '${_searchRadius.round()}m',
-                            onChanged: (value) =>
-                                setState(() => _searchRadius = value),
+                            label: '${(_searchRadius / 1609.34).toStringAsFixed(1)} mi',
+                            onChanged: (value) => setState(() => _searchRadius = value * 1609.34),
                           ),
                         ],
                       ),
@@ -679,9 +775,19 @@ class _MapPageState extends State<MapPage> {
     });
   }
 
-  Future<void> _cameraTo(LatLng pos) async {
-    final controller = await _mapController.future;
-    controller.animateCamera(CameraUpdate.newLatLngZoom(pos, 13));
+  
+  //
+  Future<void> _animateCamera(CameraUpdate update) async {
+    _isProgrammaticCameraMove = true;
+    try {
+      final controller = await _mapController.future;
+      await controller.animateCamera(update);
+    } finally {
+      _isProgrammaticCameraMove = false;
+    }
+  }
+Future<void> _cameraTo(LatLng pos) async {
+    await _animateCamera(CameraUpdate.newLatLngZoom(pos, 13));
   }
 
   /// Traffic-aware routing (Directions API with departure_time=now)
@@ -991,7 +1097,7 @@ class _MapPageState extends State<MapPage> {
             title: Text(name),
             subtitle: (lat != null && lng != null)
                 ? Text(
-                    '$vicinity • ${_calculateDistanceMeters(_currentPosition!, lat, lng).round()}m')
+                    '$vicinity • ${(_calculateDistanceMeters(_currentPosition!, lat, lng) / 1609.34).toStringAsFixed(1)} mi')
                 : Text(vicinity),
             trailing: (lat != null && lng != null)
                 ? IconButton(
@@ -1247,8 +1353,7 @@ class _MapPageState extends State<MapPage> {
             // on tap of a list object, move the camera to it's coordinates, close modal
             onTap: () async {
               final controller = await _mapController.future;
-              controller.animateCamera(
-                  CameraUpdate.newLatLngZoom(c.position, 15));
+              await _animateCamera(CameraUpdate.newLatLngZoom(c.position, 15));
               Navigator.pop(context);
             },
           );
@@ -1337,27 +1442,27 @@ class _MapPageState extends State<MapPage> {
                   // Sheet title and current radius value displayed here
                   Row(
                     children: [
-                      const Text('Crime radius (m)',
+                      const Text('Crime radius (mi)',
                           style: TextStyle(fontWeight: FontWeight.bold)),
                       const Spacer(),
-                      Text('${_crimeRadius.round()} m'),
+                      Text('${(_crimeRadius / 1609.34).toStringAsFixed(1)} mi'),
                     ],
                   ),
                   // Radius slider
                   Slider(
-                    value: _crimeRadius,
-                    min: 100,
-                    max: 5000,
+                    value: _crimeRadius / 1609.34,
+                    min: 0.1,
+                    max: 5.0,
                     divisions: 49,
                     onChanged: (v) {
-                      setLocal(() => _crimeRadius = v);
+                      setLocal(() => _crimeRadius = v * 1609.34);
                     }, // update label live
                     onChangeEnd: (v) async {
                       Navigator.pop(ctx); // close the radius bar once selected
                       if (_crimeCenter != null) {
                         await _loadCrimesAt(
                           center: _crimeCenter!,
-                          radiusMeters: v,
+                          radiusMeters: v * 1609.34,
                           daysAgo: 30, // shows crimes within 30 day period
                         );
                       }
@@ -1459,7 +1564,7 @@ class _MapPageState extends State<MapPage> {
             const SizedBox(height: 8),
             Text(label, style: Theme.of(context).textTheme.bodyMedium),
             const SizedBox(height: 6),
-            Text('~${distM}m away',
+            Text('~${(distM / 1609.34).toStringAsFixed(1)} mi away',
                 style: Theme.of(context)
                     .textTheme
                     .bodySmall
@@ -1584,7 +1689,7 @@ class _MapPageState extends State<MapPage> {
           Text(address, style: Theme.of(context).textTheme.bodyMedium),
           const SizedBox(height: 6),
           Text(
-            'LatLng: ${pos.latitude.toStringAsFixed(5)}, ${pos.longitude.toStringAsFixed(5)} • ${distM}m away',
+            'LatLng: ${pos.latitude.toStringAsFixed(5)}, ${pos.longitude.toStringAsFixed(5)} • \${(distM / 1609.34).toStringAsFixed(1)} mi away',
             style: Theme.of(context)
                 .textTheme
                 .bodySmall
@@ -1786,10 +1891,11 @@ class _MapPageState extends State<MapPage> {
       // Clear old crime markers on new search
       markers.removeWhere((id, _) => id.value.startsWith(_crimePrefix));
 
-      // For every incident, create a crime marker, give each a unique ID
+      // For every incident, create a crime marker and heatmap circle, give each a unique ID
       _lastCrimes = incidents;
       _categoryCache.clear();
       _renderFilteredCrimes();
+      _rebuildCrimeHeatmap();
 
       setState(() {}); // refreshes map
       _showCrimesListSheet(); // display the crimes on bottom popup
@@ -1964,8 +2070,43 @@ class _MapPageState extends State<MapPage> {
     return cur;
   }
 
-  /// Display map markers as defined by the filter
-  /// If the filter is empty, all are displayed (see _applyFilters)
+  // Build heatmap from crime data
+  void _rebuildCrimeHeatmap() async {
+  if (!_showCrimeHeatmap) {
+    setState(() => _crimeHeatCircles = {});
+    return;
+  }
+  try {
+    final controller = await _mapController.future;
+    _crimeViewport = await controller.getVisibleRegion();
+  } catch (_) {}
+
+  final filtered = _lastRenderedCrimes;
+  final padded = (_crimeViewport == null) ? null : _padBounds(_crimeViewport!, 0.12);
+
+  _crimeHeatCircles = _crimeHeat.build(
+    crimes: filtered,
+    activeFilters: _activeFilters,
+    viewport: padded,   // pad helps with displaying only whats on screen
+    idPrefix: 'crimeheat_', // prefix helps with deletion of markers
+  );
+  if (mounted) setState(() {});
+}
+
+// padding reccomended by ChatGPT, reduced lag in original 
+LatLngBounds _padBounds(LatLngBounds b, double pad) {
+  final sw = b.southwest;
+  final ne = b.northeast;
+  final latPad = (ne.latitude - sw.latitude) * pad;
+  final lonSpan = ne.longitude - sw.longitude;
+  final lonPad = (lonSpan >= 0 ? lonSpan : (360 + lonSpan)) * pad;
+  return LatLngBounds(
+    southwest: LatLng(sw.latitude - latPad, sw.longitude - lonPad),
+    northeast: LatLng(ne.latitude + latPad, ne.longitude + lonPad),
+  );
+}
+  // Display map markers as defined by the filter
+  // If the filter is empty, all are displayed 
   void _renderFilteredCrimes() {
     final filtered = _applyFilters(_lastCrimes); // filtered crime list
 
@@ -1993,6 +2134,7 @@ class _MapPageState extends State<MapPage> {
     }
 
     _lastRenderedCrimes = filtered; // track most recently rendered crimes
+    _rebuildCrimeHeatmap(); // rebuild heatmap for updated markers
     setState(() {}); // triggers visual for markers
   }
 
