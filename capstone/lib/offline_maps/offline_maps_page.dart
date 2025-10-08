@@ -1,15 +1,19 @@
-// lib/offline_maps/offline_maps_page.dart
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:math' as math;
+import 'dart:typed_data';
 
+import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:geolocator/geolocator.dart';
+
+import 'offline_reviews.dart';
+import 'reviews_sheet.dart';
 
 class OfflineMapsPage extends StatefulWidget {
   const OfflineMapsPage({super.key});
@@ -19,69 +23,128 @@ class OfflineMapsPage extends StatefulWidget {
 }
 
 class _OfflineMapsPageState extends State<OfflineMapsPage> {
-  // ---- CONFIG ----
+  // ====== CONSTANTS ========
   static const int minZoom = 12;
   static const int maxZoom = 16;
-  static const int tileSizeBytesGuess = 24 * 1024; // ~24 KB avg per tile
-  static const int concurrency = 8;
 
+  // MapTiler avg tile size (rough guess) for estimation UI only
+  static const int tileSizeBytesGuess = 24 * 1024;
+
+  // Keep concurrency low for free-tier throttling friendliness
+  static const int concurrency = 3;
+
+  // MapTiler raster tiles are 512 px
+  static const int rasterTilePx = 512;
+
+  // ====== FIELDS ===========
   late final Dio _dio;
+  late final OfflineReviews _offlineReviews;
+
   GoogleMapController? _map;
 
+  // Camera starts around Ruston, LA
   CameraPosition _camera = const CameraPosition(
-    target: LatLng(32.5232, -92.6379), // Ruston-ish
+    target: LatLng(32.5232, -92.6379),
     zoom: 12,
   );
 
-  // Selection radius stored in miles
+  // Selection radius (when not in Saved mode)
   double _radiusMiles = 5.0;
   double get _radiusMeters => _radiusMiles * 1609.34;
 
+  // Download state
   bool _downloading = false;
+  double _progress = 0.0; // 0..1
+
+  // Estimate box
   int _estTiles = 0;
   double _estMB = 0;
 
-  // Saved toggle
-  bool _saved = false;
-
-  // POIs
+  // Viewing toggles
+  bool _saved = false; // when true we show offline tiles via TileOverlay
   bool _showPois = true;
-  String? _poiFilter;
-  Set<Marker> _poiMarkers = {};
+  String? _poiFilter; // 'hospital'|'police'|'gas'|'mechanic' or null
+  final Set<Marker> _poiMarkers = {};
+  bool _tileErrorOccurred = false; // For the failure banner
 
   // Storage
   late Directory _root;
   late Directory _tilesRoot;
   late Directory _poisRoot;
   late File _packsFile;
-
-  // Packs
   final List<_OfflinePack> _packs = [];
 
+  // Tile URL (MapTiler, XYZ)
   String get _mapTilerKey => dotenv.env['MAPTILER_KEY'] ?? '';
   String _tileUrl(int z, int x, int y) =>
-      'https://api.maptiler.com/tiles/streets/$z/$x/$y.png?key=$_mapTilerKey';
+      'https://api.maptiler.com/maps/basic-v2/$z/$x/$y.png?key=$_mapTilerKey';
 
+  // ====== LIFECYCLE ========
   @override
   void initState() {
     super.initState();
-    _dio = Dio(BaseOptions(connectTimeout: const Duration(seconds: 15)));
+
+    // Robust Dio client
+    _dio = Dio(
+      BaseOptions(
+        connectTimeout: const Duration(seconds: 45),
+        receiveTimeout: const Duration(seconds: 45),
+        sendTimeout: const Duration(seconds: 45),
+        headers: const {
+          'Accept': 'image/png',
+          'User-Agent': 'SafeRouteOffline/1.0 (+flutter)',
+        },
+      ),
+    )..interceptors.add(
+        InterceptorsWrapper(
+          onError: (e, handler) async {
+            // Gentle retry on timeouts only
+            if (e.type == DioExceptionType.connectionTimeout ||
+                e.type == DioExceptionType.sendTimeout ||
+                e.type == DioExceptionType.receiveTimeout) {
+              await Future.delayed(const Duration(seconds: 2));
+              try {
+                final retry = await _dio.request<List<int>>(
+                  e.requestOptions.path,
+                  options: Options(method: e.requestOptions.method),
+                );
+                return handler.resolve(retry);
+              } catch (_) {}
+            }
+            return handler.next(e);
+          },
+        ),
+      );
+
     _prepareStorage().then((_) async {
       await _loadPacks();
+
+      _offlineReviews = OfflineReviews();
+      await _offlineReviews.init();
+
+      // When back online, push pending reviews (reused by online view)
+      Connectivity().onConnectivityChanged.listen((s) async {
+        if (s != ConnectivityResult.none) {
+          await _offlineReviews.syncPendingReviews();
+        }
+      });
+
       _recomputeEstimates();
-      setState(() {});
+      if (mounted) setState(() {});
     });
   }
 
-  // ---------- Storage ----------
+  // ====== STORAGE ==========
   Future<void> _prepareStorage() async {
     final dir = await getApplicationSupportDirectory();
     _root = Directory('${dir.path}/offline');
     _tilesRoot = Directory('${_root.path}/tiles');
     _poisRoot = Directory('${_root.path}/pois');
     _packsFile = File('${_root.path}/packs.json');
+
     await _tilesRoot.create(recursive: true);
     await _poisRoot.create(recursive: true);
+
     if (!await _packsFile.exists()) {
       await _packsFile.writeAsString(jsonEncode({'packs': []}));
     }
@@ -107,7 +170,7 @@ class _OfflineMapsPageState extends State<OfflineMapsPage> {
     await _packsFile.writeAsString(jsonEncode(map));
   }
 
-  // ---------- Geometry ----------
+  // ====== MAP MATH =========
   static double _degToRad(double d) => d * math.pi / 180.0;
   static double _radToDeg(double r) => r * 180.0 / math.pi;
   static double _sinh(double x) => (math.exp(x) - math.exp(-x)) / 2.0;
@@ -124,6 +187,7 @@ class _OfflineMapsPageState extends State<OfflineMapsPage> {
 
   static int _long2tileX(double lon, int z) =>
       ((lon + 180.0) / 360.0 * (1 << z)).floor();
+
   static int _lat2tileY(double lat, int z) {
     final rad = _degToRad(lat);
     return ((1 -
@@ -183,125 +247,196 @@ class _OfflineMapsPageState extends State<OfflineMapsPage> {
     });
   }
 
-  // ---------- Download ----------
+  // == LOCAL TILE PROVIDER ==
+  Future<Tile> _getFileTile(String packId, int x, int y, int z) async {
+    try {
+      final normalPath = '${_tilesRoot.path}/$packId/$z/$x/$y.png';
+      final normal = File(normalPath);
+      if (await normal.exists()) {
+        final bytes = await normal.readAsBytes();
+        if (bytes.isNotEmpty) {
+          return Tile(rasterTilePx, rasterTilePx, Uint8List.fromList(bytes));
+        }
+      }
+
+      // Try inverted Y (TMS) just in case
+      final tmsY = ((1 << z) - 1) - y;
+      final tmsPath = '${_tilesRoot.path}/$packId/$z/$x/$tmsY.png';
+      final tms = File(tmsPath);
+      if (await tms.exists()) {
+        final bytes = await tms.readAsBytes();
+        if (bytes.isNotEmpty) {
+          return Tile(rasterTilePx, rasterTilePx, Uint8List.fromList(bytes));
+        }
+      }
+
+      return TileProvider.noTile;
+    } catch (e) {
+      debugPrint('Tile load error: $e');
+      if (mounted && !_tileErrorOccurred) {
+        setState(() => _tileErrorOccurred = true);
+      }
+      return TileProvider.noTile;
+    }
+  }
+
+  TileOverlay _tileOverlayForPack(_OfflinePack pack) => TileOverlay(
+        tileOverlayId: TileOverlayId('offline_${pack.id}'),
+        tileSize: rasterTilePx,
+        transparency: 0.0,
+        zIndex: 1,
+        tileProvider: _LocalFileTileProvider((x, y, z) async {
+          final zoom = (z ?? pack.minZoom).clamp(minZoom, maxZoom);
+          return _getFileTile(pack.id, x, y, zoom);
+        }),
+      );
+
+  // ===== DOWNLOAD FLOW =====
   Future<void> _downloadTiles() async {
     if (_downloading) return;
     if (_mapTilerKey.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Add MAPTILER_KEY to your .env file.')),
+        const SnackBar(content: Text('Missing MAPTILER_KEY in .env')),
       );
       return;
     }
 
-    setState(() => _downloading = true);
+    setState(() {
+      _downloading = true;
+      _progress = 0.0;
+    });
+
     final startedAt = DateTime.now();
+    final b = _circleBounds(_camera.target, _radiusMeters);
 
-    try {
-      final b = _circleBounds(_camera.target, _radiusMeters);
-
-      final todo = <({int z, int x, int y})>[];
-      for (int z = minZoom; z <= maxZoom; z++) {
-        final xMin = _long2tileX(b.southwest.longitude, z);
-        final xMax = _long2tileX(b.northeast.longitude, z);
-        final yMin = _lat2tileY(b.northeast.latitude, z);
-        final yMax = _lat2tileY(b.southwest.latitude, z);
-        for (int x = xMin; x <= xMax; x++) {
-          for (int y = yMin; y <= yMax; y++) {
-            if (_tileCenterInCircle(
-              z: z,
-              x: x,
-              y: y,
-              center: _camera.target,
-              radiusMeters: _radiusMeters,
-            )) {
-              todo.add((z: z, x: x, y: y));
-            }
+    // Build tile TODO list
+    final todo = <({int z, int x, int y})>[];
+    for (int z = minZoom; z <= maxZoom; z++) {
+      final xMin = _long2tileX(b.southwest.longitude, z);
+      final xMax = _long2tileX(b.northeast.longitude, z);
+      final yMin = _lat2tileY(b.northeast.latitude, z);
+      final yMax = _lat2tileY(b.southwest.latitude, z);
+      for (int x = xMin; x <= xMax; x++) {
+        for (int y = yMin; y <= yMax; y++) {
+          if (_tileCenterInCircle(
+            z: z,
+            x: x,
+            y: y,
+            center: _camera.target,
+            radiusMeters: _radiusMeters,
+          )) {
+            todo.add((z: z, x: x, y: y));
           }
         }
       }
+    }
 
-      final pack = _OfflinePack(
-        id: 'pack_${startedAt.microsecondsSinceEpoch}',
-        name:
-            'Area @ ${_camera.target.latitude.toStringAsFixed(3)}, ${_camera.target.longitude.toStringAsFixed(3)}',
-        center: _camera.target,
-        radiusMiles: _radiusMiles,
-        minZoom: minZoom,
-        maxZoom: maxZoom,
-        bytes: 0,
-        tiles: todo.length,
-        createdAt: startedAt,
-        status: OfflinePackStatus.downloading,
+    // Register the pack
+    final pack = _OfflinePack(
+      id: 'pack_${startedAt.microsecondsSinceEpoch}',
+      name:
+          'Area @ ${_camera.target.latitude.toStringAsFixed(3)}, ${_camera.target.longitude.toStringAsFixed(3)}',
+      center: _camera.target,
+      radiusMiles: _radiusMiles,
+      minZoom: minZoom,
+      maxZoom: maxZoom,
+      bytes: 0,
+      tiles: todo.length,
+      createdAt: startedAt,
+      status: OfflinePackStatus.downloading,
+    );
+    _packs.add(pack);
+    await _savePacks();
+    if (mounted) setState(() {});
+
+    int done = 0;
+    int bytesWritten = 0;
+    const maxRetries = 5;
+
+    // Sequential loop — more predictable under throttling
+    for (final t in todo) {
+      final url = _tileUrl(t.z, t.x, t.y);
+      final dir = Directory('${_tilesRoot.path}/${pack.id}/${t.z}/${t.x}');
+      await dir.create(recursive: true);
+      final file = File('${dir.path}/${t.y}.png');
+
+      if (await file.exists()) {
+        done++;
+        if (mounted && done % 50 == 0) {
+          setState(() => _progress = done / todo.length);
+        }
+        continue;
+      }
+
+      int attempt = 0;
+      while (attempt < maxRetries) {
+        try {
+          final resp = await _dio.get<List<int>>(
+            url,
+            options: Options(
+              responseType: ResponseType.bytes,
+              validateStatus: (_) => true,
+            ),
+          );
+
+          final sc = resp.statusCode ?? 0;
+          if (sc == 200 && resp.data != null) {
+            await file.writeAsBytes(resp.data!);
+            bytesWritten += resp.data!.length;
+            break;
+          } else if (sc == 429) {
+            // exponential backoff
+            final wait = Duration(seconds: math.pow(2, attempt).toInt());
+            await Future.delayed(wait);
+          } else {
+            // give up on this tile
+            break;
+          }
+        } catch (_) {
+          await Future.delayed(Duration(milliseconds: 600 * (attempt + 1)));
+        }
+        attempt++;
+      }
+
+      done++;
+      if (mounted && done % 50 == 0) {
+        setState(() => _progress = done / todo.length);
+      }
+    }
+
+    // Progress → 100%
+    if (mounted) setState(() => _progress = 1.0);
+
+    // Save POIs alongside tiles
+    await _downloadPoisForArea(b, packId: pack.id);
+
+    // Finalize pack
+    final idx = _packs.indexWhere((p) => p.id == pack.id);
+    if (idx != -1) {
+      _packs[idx] = _packs[idx].copyWith(
+        status: OfflinePackStatus.ready,
+        progress: 1.0,
+        bytes: bytesWritten,
       );
-      _packs.add(pack);
       await _savePacks();
-      setState(() {});
+    }
 
-      int done = 0;
-      int bytesWritten = 0;
-      final queue = List<({int z, int x, int y})>.from(todo);
-
-      Future<void> worker() async {
-        while (queue.isNotEmpty) {
-          final t = queue.removeLast();
-          final outDir = Directory('${_tilesRoot.path}/${pack.id}/${t.z}/${t.x}')
-            ..createSync(recursive: true);
-          final outFile = File('${outDir.path}/${t.y}.png');
-
-          if (!outFile.existsSync()) {
-            try {
-              final resp = await _dio.get<List<int>>(
-                _tileUrl(t.z, t.x, t.y),
-                options: Options(responseType: ResponseType.bytes),
-              );
-              if (resp.data != null) {
-                await outFile.writeAsBytes(resp.data!);
-                bytesWritten += resp.data!.length;
-              }
-            } catch (_) {}
-          }
-          done++;
-
-          if (mounted && done % 200 == 0) {
-            final idx = _packs.indexWhere((p) => p.id == pack.id);
-            if (idx != -1) {
-              _packs[idx] = _packs[idx].copyWith(
-                progress: done / todo.length,
-                bytes: bytesWritten,
-              );
-              await _savePacks();
-              setState(() {});
-            }
-          }
-        }
-      }
-
-      await Future.wait(List.generate(concurrency, (_) => worker()));
-
-      await _downloadPoisForArea(b, packId: pack.id);
-
-      final idx = _packs.indexWhere((p) => p.id == pack.id);
-      if (idx != -1) {
-        _packs[idx] = _packs[idx].copyWith(
-          progress: 1.0,
-          status: OfflinePackStatus.ready,
-          bytes: bytesWritten,
-          tiles: todo.length,
-        );
-        await _savePacks();
-      }
-
-      if (!mounted) return;
+    if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Saved ${todo.length} tiles + POIs')),
+        SnackBar(
+          content: Text(
+              '✅ Saved ${todo.length} tiles (${_fmtBytes(bytesWritten)}) + POIs'),
+        ),
       );
-    } finally {
-      if (mounted) setState(() => _downloading = false);
+      setState(() => _downloading = false);
     }
   }
 
-  Future<void> _downloadPoisForArea(LatLngBounds b,
-      {required String packId}) async {
+  // ====== POI FETCH =========
+  Future<void> _downloadPoisForArea(
+    LatLngBounds b, {
+    required String packId,
+  }) async {
     final south = b.southwest.latitude;
     final west = b.southwest.longitude;
     final north = b.northeast.latitude;
@@ -324,54 +459,77 @@ class _OfflineMapsPageState extends State<OfflineMapsPage> {
         data: {'data': query},
         options: Options(contentType: Headers.formUrlEncodedContentType),
       );
-      if (resp.statusCode == 200) {
-        final decoded =
-            json.decode(resp.data as String) as Map<String, dynamic>;
-        final elements =
-            (decoded['elements'] as List).cast<Map<String, dynamic>>();
-        final pois = elements.map((e) {
-          final tags = (e['tags'] as Map?) ?? {};
-          String type = '';
-          if (tags['amenity'] == 'hospital') type = 'hospital';
-          else if (tags['amenity'] == 'police') type = 'police';
-          else if (tags['amenity'] == 'fuel') type = 'gas';
-          else if (tags['shop'] == 'car_repair') type = 'mechanic';
 
-          return {
-            'id': e['id'],
-            'name': (tags['name'] ?? type.toUpperCase()).toString(),
-            'type': type,
-            'lat': e['lat'],
-            'lon': e['lon'],
-          };
-        }).where((m) => m['type'] != '').toList();
+      dynamic body = resp.data;
+      if (body is List<int>) body = utf8.decode(body);
+      if (body is String) body = jsonDecode(body);
 
-        final outFile = File('${_poisRoot.path}/$packId.json');
-        await outFile.writeAsString(json.encode({'pois': pois}));
+      final elements =
+          (body['elements'] as List?)?.cast<Map<String, dynamic>>() ?? const [];
+
+      String _buildAddress(Map tags) {
+        final full = (tags['addr:full'] ?? '').toString().trim();
+        if (full.isNotEmpty) return full;
+        final num = (tags['addr:housenumber'] ?? '').toString().trim();
+        final street = (tags['addr:street'] ?? '').toString().trim();
+        final city = (tags['addr:city'] ?? '').toString().trim();
+        final state = (tags['addr:state'] ?? '').toString().trim();
+        final postcode = (tags['addr:postcode'] ?? '').toString().trim();
+        final parts = [
+          if ((num + street).trim().isNotEmpty) '$num $street'.trim(),
+          [city, state].where((e) => e.isNotEmpty).join(', '),
+          postcode
+        ].where((e) => e.isNotEmpty).toList();
+        return parts.join(', ');
       }
-    } catch (_) {}
+
+      String _pickPhone(Map tags) =>
+          (tags['contact:phone'] ??
+                  tags['phone'] ??
+                  tags['contact:mobile'] ??
+                  '')
+              .toString();
+
+      String _pickWebsite(Map tags) =>
+          (tags['contact:website'] ?? tags['website'] ?? '').toString();
+
+      final pois = elements
+          .map((e) {
+            final tags = (e['tags'] as Map?) ?? {};
+            String type = '';
+            if (tags['amenity'] == 'hospital') type = 'hospital';
+            else if (tags['amenity'] == 'police') type = 'police';
+            else if (tags['amenity'] == 'fuel') type = 'gas';
+            else if (tags['shop'] == 'car_repair') type = 'mechanic';
+
+            if (type.isEmpty) return null;
+
+            return {
+              'id': e['id'],
+              'type': type,
+              'name': (tags['name'] ?? type.toUpperCase()).toString(),
+              'lat': (e['lat'] as num?)?.toDouble(),
+              'lon': (e['lon'] as num?)?.toDouble(),
+              'address': _buildAddress(tags),
+              'phone': _pickPhone(tags),
+              'website': _pickWebsite(tags),
+            };
+          })
+          .where((m) => m != null)
+          .cast<Map<String, dynamic>>()
+          .toList();
+
+      final outFile = File('${_poisRoot.path}/$packId.json');
+      await outFile.writeAsString(json.encode({'pois': pois}));
+    } catch (e) {
+      debugPrint('POI download error: $e');
+    }
   }
 
-  // ---------- Preview ----------
-  Future<Tile> _getFileTile(String packId, int x, int y, int z) async {
-    final file = File('${_tilesRoot.path}/$packId/$z/$x/$y.png');
-    if (!await file.exists()) return TileProvider.noTile;
-    final bytes = await file.readAsBytes();
-    return bytes.isEmpty ? TileProvider.noTile : Tile(256, 256, bytes);
-  }
-
-  TileOverlay _tileOverlayForPack(_OfflinePack pack) => TileOverlay(
-        tileOverlayId: TileOverlayId('offline_${pack.id}'),
-        tileProvider: _LocalFileTileProvider(
-          (x, y, z) => _getFileTile(
-              pack.id, x, y, (z ?? pack.minZoom).clamp(minZoom, maxZoom)),
-        ),
-        zIndex: 0,
-        transparency: 0.0,
-      );
-
+  // ====== POI PREVIEW ======
   Future<void> _loadPoisForPreview() async {
     _poiMarkers.clear();
+
     for (final pack in _packs.where((p) => p.status == OfflinePackStatus.ready)) {
       final f = File('${_poisRoot.path}/${pack.id}.json');
       if (!await f.exists()) continue;
@@ -379,12 +537,17 @@ class _OfflineMapsPageState extends State<OfflineMapsPage> {
       final decoded =
           json.decode(await f.readAsString()) as Map<String, dynamic>;
       final pois = (decoded['pois'] as List).cast<Map<String, dynamic>>();
+
       for (final p in pois) {
         final type = (p['type'] as String).toLowerCase();
         if (_poiFilter != null && type != _poiFilter) continue;
 
-        final pos =
-            LatLng((p['lat'] as num).toDouble(), (p['lon'] as num).toDouble());
+        final lat = (p['lat'] as num?)?.toDouble();
+        final lon = (p['lon'] as num?)?.toDouble();
+        if (lat == null || lon == null) continue;
+
+        final pos = LatLng(lat, lon);
+
         final hue = switch (type) {
           'hospital' => BitmapDescriptor.hueRed,
           'police' => BitmapDescriptor.hueBlue,
@@ -392,21 +555,56 @@ class _OfflineMapsPageState extends State<OfflineMapsPage> {
           'mechanic' => BitmapDescriptor.hueOrange,
           _ => BitmapDescriptor.hueRose,
         };
+
+        final poiId = p['id'].toString();
+
+        // Read local reviews to compute avg + count
+        final revs = await _offlineReviews.getReviews(poiId);
+        final avg = revs.isEmpty
+            ? 0.0
+            : revs.fold<double>(0, (a, r) => a + (r['rating'] as num).toDouble()) /
+                revs.length;
+
+        final title = StringBuffer(p['name'] ?? type.toUpperCase());
+        if (avg > 0) {
+          title.write('  ⭐${avg.toStringAsFixed(1)}');
+          title.write(' (${revs.length})');
+        }
+
         _poiMarkers.add(
           Marker(
             markerId: MarkerId('${pack.id}_${p['id']}'),
             position: pos,
-            infoWindow:
-                InfoWindow(title: (p['name'] ?? type).toString()),
             icon: BitmapDescriptor.defaultMarkerWithHue(hue),
+            infoWindow: InfoWindow(
+              title: title.toString(),
+              onTap: () {
+                // Open the *same* review/ratings sheet we use online
+                showModalBottomSheet(
+                  context: context,
+                  isScrollControlled: true,
+                  useSafeArea: true,
+                  backgroundColor: Colors.transparent,
+                  builder: (_) => ReviewsSheet(
+                    poiId: poiId,
+                    name: (p['name'] ?? '').toString(),
+                    address: (p['address'] ?? '').toString(),
+                    phone: (p['phone'] ?? '').toString(),
+                    website: (p['website'] ?? '').toString(),
+                    reviews: _offlineReviews,
+                  ),
+                );
+              },
+            ),
           ),
         );
       }
     }
+
     if (mounted) setState(() {});
   }
 
-  // ---------- My location ----------
+  // ==== MY LOCATION =========
   Future<void> _goToMyLocation() async {
     LocationPermission perm = await Geolocator.checkPermission();
     if (perm == LocationPermission.denied) {
@@ -435,7 +633,7 @@ class _OfflineMapsPageState extends State<OfflineMapsPage> {
     }
   }
 
-  // ---------- Bottom sheet ----------
+  // ===== PACKS SHEET =======
   void _openPacksSheet() async {
     await _loadPacks();
     if (!mounted) return;
@@ -444,9 +642,8 @@ class _OfflineMapsPageState extends State<OfflineMapsPage> {
       context: context,
       showDragHandle: true,
       builder: (_) {
-        final downloading = _packs
-            .where((p) => p.status == OfflinePackStatus.downloading)
-            .toList();
+        final downloading =
+            _packs.where((p) => p.status == OfflinePackStatus.downloading).toList();
         final ready =
             _packs.where((p) => p.status == OfflinePackStatus.ready).toList();
 
@@ -459,7 +656,7 @@ class _OfflineMapsPageState extends State<OfflineMapsPage> {
 
         return SafeArea(
           child: SizedBox(
-            height: 440,
+            height: 460,
             child: ListView(
               children: [
                 if (downloading.isNotEmpty)
@@ -491,8 +688,8 @@ class _OfflineMapsPageState extends State<OfflineMapsPage> {
           ? null
           : () async {
               Navigator.pop(context);
-              await _map?.animateCamera(CameraUpdate.newLatLngZoom(
-                  p.center, p.minZoom.toDouble()));
+              await _map?.animateCamera(
+                  CameraUpdate.newLatLngZoom(p.center, p.minZoom.toDouble()));
               setState(() {
                 _radiusMiles = p.radiusMiles;
                 _camera = CameraPosition(target: p.center, zoom: _camera.zoom);
@@ -523,8 +720,8 @@ class _OfflineMapsPageState extends State<OfflineMapsPage> {
             if (mounted) setState(() {});
           } else if (v == 'resize') {
             Navigator.pop(context);
-            await _map?.animateCamera(CameraUpdate.newLatLngZoom(
-                p.center, p.minZoom.toDouble()));
+            await _map?.animateCamera(
+                CameraUpdate.newLatLngZoom(p.center, p.minZoom.toDouble()));
             setState(() {
               _radiusMiles = p.radiusMiles;
               _recomputeEstimates();
@@ -556,22 +753,24 @@ class _OfflineMapsPageState extends State<OfflineMapsPage> {
         ),
         actions: [
           TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('Cancel')),
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
           ElevatedButton(
-              onPressed: () => Navigator.pop(context, c.text),
-              child: const Text('Save')),
+            onPressed: () => Navigator.pop(context, c.text),
+            child: const Text('Save'),
+          ),
         ],
       ),
     );
   }
 
-  // ---------- UI ----------
+  // ===== UI HELPERS ========
   String _fmtBytes(int b) {
     if (b <= 0) return '0 B';
-    const units = ['B', 'KB', 'MB', 'GB'];
-    final i = (math.log(b) / math.log(1024)).floor().clamp(0, units.length - 1);
-    return '${(b / math.pow(1024, i)).toStringAsFixed(1)} ${units[i]}';
+    const u = ['B', 'KB', 'MB', 'GB'];
+    final i = (math.log(b) / math.log(1024)).floor().clamp(0, u.length - 1);
+    return '${(b / math.pow(1024, i)).toStringAsFixed(1)} ${u[i]}';
   }
 
   String _fmtMiles(double mi) => '${mi.toStringAsFixed(1)} mi';
@@ -604,6 +803,7 @@ class _OfflineMapsPageState extends State<OfflineMapsPage> {
     return out;
   }
 
+  // ======= BUILD ===========
   @override
   Widget build(BuildContext context) {
     final est = _estTiles > 0
@@ -638,7 +838,10 @@ class _OfflineMapsPageState extends State<OfflineMapsPage> {
               Switch(
                 value: _saved,
                 onChanged: (v) async {
-                  setState(() => _saved = v);
+                  setState(() {
+                    _saved = v;
+                    _tileErrorOccurred = false; // Reset error banner
+                  });
                   _poiFilter = null;
                   if (v && _showPois) {
                     await _loadPoisForPreview();
@@ -673,8 +876,8 @@ class _OfflineMapsPageState extends State<OfflineMapsPage> {
             mapType: _saved ? MapType.none : MapType.normal,
             tileOverlays: _saved
                 ? {
-                    for (final p
-                        in _packs.where((e) => e.status == OfflinePackStatus.ready))
+                    for (final p in _packs
+                        .where((e) => e.status == OfflinePackStatus.ready))
                       _tileOverlayForPack(p),
                   }
                 : {},
@@ -690,6 +893,7 @@ class _OfflineMapsPageState extends State<OfflineMapsPage> {
             },
           ),
 
+          // Radius slider (selecting mode only)
           if (!_saved)
             Positioned(
               right: 12,
@@ -716,6 +920,7 @@ class _OfflineMapsPageState extends State<OfflineMapsPage> {
               ),
             ),
 
+          // Download CTA
           if (!_saved)
             Positioned(
               left: 16,
@@ -725,8 +930,8 @@ class _OfflineMapsPageState extends State<OfflineMapsPage> {
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
                   Container(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 12, vertical: 10),
                     decoration: BoxDecoration(
                       color: Theme.of(context).colorScheme.surface,
                       borderRadius: BorderRadius.circular(12),
@@ -753,13 +958,49 @@ class _OfflineMapsPageState extends State<OfflineMapsPage> {
                         ? const SizedBox(
                             height: 20,
                             width: 20,
-                            child: CircularProgressIndicator(strokeWidth: 2))
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
                         : const Text('Download (tiles + POIs)'),
                   ),
                 ],
               ),
             ),
 
+          // Progress footer
+          if (_downloading)
+            Positioned(
+              left: 0,
+              right: 0,
+              bottom: 0,
+              child: Material(
+                elevation: 10,
+                color: Theme.of(context).colorScheme.surface,
+                child: SafeArea(
+                  top: false,
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 16, vertical: 12),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        Row(
+                          children: [
+                            const Expanded(
+                              child: Text('Downloading map for offline use'),
+                            ),
+                            Text('${(_progress * 100).toStringAsFixed(0)}%'),
+                          ],
+                        ),
+                        const SizedBox(height: 8),
+                        LinearProgressIndicator(value: _progress),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ),
+
+          // Emergency filter panel (Saved + POIs visible)
           if (_saved && _showPois)
             Positioned(
               right: 12,
@@ -772,13 +1013,52 @@ class _OfflineMapsPageState extends State<OfflineMapsPage> {
                 },
               ),
             ),
+          
+          // Tile loading error banner
+          if (_saved && _tileErrorOccurred)
+            Positioned(
+              top: 0,
+              left: 0,
+              right: 0,
+              child: Material(
+                color: Colors.amber.shade700,
+                elevation: 2,
+                child: SafeArea(
+                  bottom: false,
+                  child: Padding(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                    child: Row(
+                      children: [
+                        const Icon(Icons.warning_amber_rounded,
+                            color: Colors.white),
+                        const SizedBox(width: 12),
+                        const Expanded(
+                          child: Text(
+                            'Some saved map areas may be missing.',
+                            style: TextStyle(color: Colors.white),
+                          ),
+                        ),
+                        IconButton(
+                          padding: EdgeInsets.zero,
+                          constraints: const BoxConstraints(),
+                          icon: const Icon(Icons.close, color: Colors.white),
+                          onPressed: () =>
+                              setState(() => _tileErrorOccurred = false),
+                        )
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ),
         ],
       ),
     );
   }
 }
 
-// ---------- Emergency Panel ----------
+// ==== SMALL WIDGETS ======
 class _EmergencyPanel extends StatelessWidget {
   final String? active;
   final ValueChanged<String> onSelect;
@@ -821,9 +1101,7 @@ class _EmergencyPanel extends StatelessWidget {
             _chip(context,
                 key: 'police', icon: Icons.local_police, label: 'Police'),
             _chip(context,
-                key: 'gas',
-                icon: Icons.local_gas_station,
-                label: 'Gas'),
+                key: 'gas', icon: Icons.local_gas_station, label: 'Gas'),
           ],
         ),
       ),
@@ -831,7 +1109,7 @@ class _EmergencyPanel extends StatelessWidget {
   }
 }
 
-// ---------- TileProvider ----------
+// === TILE PROVIDER =======
 class _LocalFileTileProvider extends TileProvider {
   final Future<Tile> Function(int x, int y, int? z) _loader;
   _LocalFileTileProvider(this._loader);
@@ -839,7 +1117,7 @@ class _LocalFileTileProvider extends TileProvider {
   Future<Tile> getTile(int x, int y, int? zoom) => _loader(x, y, zoom);
 }
 
-// ---------- Pack model ----------
+// ======= MODEL ===========
 enum OfflinePackStatus { downloading, ready }
 
 class _OfflinePack {
@@ -919,8 +1197,10 @@ class _OfflinePack {
           (m['center']?['lng'] as num?)?.toDouble() ?? 0,
         ),
         radiusMiles: (m['radiusMiles'] as num?)?.toDouble() ?? 5.0,
-        minZoom: (m['minZoom'] as num?)?.toInt() ?? _OfflineMapsPageState.minZoom,
-        maxZoom: (m['maxZoom'] as num?)?.toInt() ?? _OfflineMapsPageState.maxZoom,
+        minZoom:
+            (m['minZoom'] as num?)?.toInt() ?? _OfflineMapsPageState.minZoom,
+        maxZoom:
+            (m['maxZoom'] as num?)?.toInt() ?? _OfflineMapsPageState.maxZoom,
         bytes: (m['bytes'] as num?)?.toInt() ?? 0,
         tiles: (m['tiles'] as num?)?.toInt() ?? 0,
         createdAt: DateTime.tryParse(m['createdAt'] as String? ?? '') ??

@@ -47,3 +47,4 @@ app.*.map.json
 #sensitive data
 android/app/google-services.json
 
+.DS_Store
