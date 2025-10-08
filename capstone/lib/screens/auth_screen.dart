@@ -8,6 +8,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import '../services/encryption_service.dart';
 import 'package:device_info_plus/device_info_plus.dart';
 import 'dart:io';
+import '../screens/LockedAccountScreen.dart';
 
 
 class AuthScreen extends StatefulWidget{
@@ -84,31 +85,115 @@ Time: ${DateTime.now().toUtc()}</p>
       }
     }
   } else {
-    // SIGNUP FLOW
-    print("🆕 Creating new user...");
-    userCred = await FirebaseAuth.instance.createUserWithEmailAndPassword(
-      email: email,
-      password: password,
-    );
+  // SIGNUP FLOW
+  print("🆕 Creating new user...");
+  userCred = await FirebaseAuth.instance.createUserWithEmailAndPassword(
+    email: email,
+    password: password,
+  );
 
-    final uid = userCred.user?.uid;
-    final encryptedName = await EncryptionService.encrypt(displayName);
-    final encryptedEmail = await EncryptionService.encrypt(email);
-    final rawDeviceId = await getUniqieDeviceId();
-    final encryptedDeviceId = await EncryptionService.encrypt(rawDeviceId);
+  final user = userCred.user;
+  if (user == null) {
+    print("❌ UID is null, cannot proceed");
+    return;
+  }
+  final uid = user.uid;
 
+  // Ensure encryption key exists before encrypting anything
+  await EncryptionService.generateAndStoreKey();
+
+  final encryptedName = await EncryptionService.encrypt(displayName);
+  final encryptedEmail = await EncryptionService.encrypt(email);
+  final rawDeviceId = await getUniqieDeviceId();
+  final encryptedDeviceId = await EncryptionService.encrypt(rawDeviceId);
+
+  print("🧾 Encrypted data ready. Writing Firestore docs...");
+
+  try {
+    // Store user profile
     await FirebaseFirestore.instance.collection('users').doc(uid).set({
       'full_name': encryptedName,
       'email': encryptedEmail,
       'created_at': Timestamp.now(),
+      'accountLocked': false,
+    }, SetOptions(merge: true));
+
+    await FirebaseFirestore.instance
+      .collection('users')
+      .doc(uid)
+      .collection('devices')
+      .doc(rawDeviceId)
+      .set({
+      'deviceId': rawDeviceId, // store raw, not encrypted
+      'createdAt': FieldValue.serverTimestamp(),
+      'firstLogin': true,
+      });
+
+    // ✅ Store device info in subcollection
+    await FirebaseFirestore.instance
+        .collection('users')
+        .doc(uid)
+        .collection('devices')
+        .doc(rawDeviceId)
+        .set({
+      'deviceId': encryptedDeviceId,
+      'createdAt': FieldValue.serverTimestamp(),
+      'firstLogin': true,
     });
+
+    print("✅ User + device document written to Firestore");
+
+    // ✅ Optionally send “Welcome / new device registered” email
+    try {
+      final encryptedUid = await EncryptionService.encrypt(uid);
+      final lockUrl =
+          'https://us-central1-capstoneproject-sf2025.cloudfunctions.net/lockAccount?uid=$encryptedUid';
+
+      await FirebaseFirestore.instance.collection('mail').add({
+        'to': email,
+        'message': {
+          'subject': 'Welcome to Bypassr — Your Account is Set Up',
+          'html': '''
+<p>Hello $displayName,</p>
+<p>Your account has been created successfully.</p>
+<p>Device ID: $rawDeviceId<br/>
+Time: ${DateTime.now().toUtc()}</p>
+
+<p>If this wasn't you, you can <a href="$lockUrl">lock your account here</a>.</p>
+
+<p>Stay safe,<br/>Bypassr Security Team</p>
+'''
+        }
+      });
+
+      print('✅ Sent welcome email via Firestore mail trigger');
+    } catch (e) {
+      print("❌ Failed to add welcome email doc: $e");
+    }
+
+  } catch (e) {
+    print("❌ Failed to write user or device document: $e");
   }
 
-  print("✅ Auth successful");
-  Navigator.pushReplacement(
-    context,
-    MaterialPageRoute(builder: (_) => const MapPage()),
-  );
+  // fetch user document
+  final userDoc =
+      await FirebaseFirestore.instance.collection('users').doc(uid).get();
+  final isLocked = (userDoc.data()?['accountLocked'] ?? false) as bool;
+
+  if (isLocked) {
+    Navigator.pushReplacement(
+      context,
+      MaterialPageRoute(builder: (_) => LockedAccountScreen()),
+    );
+  } else {
+    print("Auth successful");
+    Navigator.pushReplacement(
+      context,
+      MaterialPageRoute(builder: (_) => const MapPage()),
+    );
+  }
+}
+
 } catch (e, stack) {
   print("Auth error: $e");
   print(stack);

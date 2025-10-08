@@ -42,37 +42,42 @@ admin.initializeApp();
 const ENCRYPTION_KEY = process.env.ENCRYPTION_KEY;
 
 // Decryption helper using AES-256-CBC
-function decrypt(text) {
-  const decipher = crypto.createDecipheriv(
-    "aes-256-cbc",
-    Buffer.from(ENCRYPTION_KEY),
-    Buffer.alloc(16, 0) // IV (zero-filled for simplicity; must match Dart side)
-  );
+function decrypt(text, base64Key) {
+  const key = Buffer.from(base64Key, 'base64');
+  const decipher = crypto.createDecipheriv("aes-256-cbc", key, Buffer.alloc(16, 0));
   let decrypted = decipher.update(text, "base64", "utf8");
   decrypted += decipher.final("utf8");
   return decrypted;
 }
 
 // 🔐 Lock Account Function
-exports.lockAccount = functions.https.onRequest(async (req, res) => {
+ exports.lockAccount = functions.https.onRequest(async (req, res) => {
   try {
+    const uid = req.query.uid;
     const encryptedUid = req.query.uid;
-    if (!encryptedUid) throw new Error("Missing UID");
+    if (!uid || !encryptedUid) throw new Error("Missing UID");
 
-    const uid = decrypt(encryptedUid);
+    // 🔐 Fetch user's encryption key
+    const userDoc = await admin.firestore().collection("users").doc(uid).get();
+    const userData = userDoc.data();
+    const userKey = userData && userData.encryptionKey;
+    if (!userKey) throw new Error("User key not found");
 
-    await admin.firestore().collection("users").doc(uid).update({
+    // Decrypt UID using this user's key
+    const decryptedUid = decrypt(encryptedUid, userKey);
+
+    // Confirm uid matches
+    if (decryptedUid !== uid) throw new Error("UID mismatch");
+
+    //Flag the account
+    await admin.firestore().collection("users").doc(uid).set({
       accountLocked: true,
       lockedAt: admin.firestore.FieldValue.serverTimestamp()
-    });
+    }, { merge: true });
 
-    res.status(200).send(`
-      <h2>🔒 Account Locked</h2>
-      <p>Your account has been locked from rating areas and finding friend locations.</p>
-    `);
+    res.status(200).send(`<h2>🔒 Account Locked</h2>`);
   } catch (err) {
     console.error("Error in lockAccount:", err);
     res.status(400).send("⚠️ Error processing lock request.");
   }
 });
-

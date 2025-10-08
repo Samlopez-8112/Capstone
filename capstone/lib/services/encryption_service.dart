@@ -1,5 +1,7 @@
 import 'dart:convert';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:encrypt/encrypt.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
 class EncryptionService {
@@ -12,6 +14,13 @@ static Future<void> generateAndStoreKey() async {
   final key = Key.fromSecureRandom(32);
   final encodedKey = base64UrlEncode(key.bytes);
   await _secureStorage.write(key: _keyStorageKey, value: encodedKey);
+
+  final uid = FirebaseAuth.instance.currentUser?.uid;
+  if(uid != null){
+    await FirebaseFirestore.instance.collection('users').doc(uid).set({
+      'encryptionKey': encodedKey,
+    }, SetOptions(merge:true));
+  }
 }
 
 //Loads the AES key from secure storage
@@ -44,6 +53,16 @@ static Future<String> decrypt(String encryptedJson) async {
   final encrypted = Encrypted.fromBase64(map['data']);
   final encrypter = Encrypter(AES(key));
   return encrypter.decrypt(encrypted, iv: iv);
+}
+
+static Future<void> ensureKeyExists() async {
+  final existingKey = await _secureStorage.read(key: _keyStorageKey);
+  if (existingKey == null) {
+    print("🔑 No encryption key found — generating one now...");
+    await generateAndStoreKey();
+  } else {
+    print("✅ Encryption key already exists");
+  }
 }
 
 }

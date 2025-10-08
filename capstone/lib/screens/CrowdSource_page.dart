@@ -4,6 +4,9 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
+import '../utils/account_lock_guard.dart';
+import '../screens/map_page.dart';
+
 
 class RateAreaScreen extends StatefulWidget {
   final LatLng? pos;
@@ -46,6 +49,9 @@ class _RateAreaScreenState extends State<RateAreaScreen> {
   @override
   void initState(){
     super.initState();
+
+    // checks if account is locked
+    AccountLockGuard.check(context);
 
     //if a location is passed from the map long-press, set it immediately
     if(widget.pos != null){

@@ -396,20 +396,29 @@ class HeatmapManager {
   }
 
   Future<void> endorseRating(String ratingDocPath, String endorserUid) async {
-  print("Endorsing rating at: $ratingDocPath");
   final docRef = FirebaseFirestore.instance.doc(ratingDocPath);
   final endorsementRef = docRef.collection('endorsements').doc(endorserUid);
 
   try {
-    final alreadyEndorsed = await endorsementRef.get();
-    if (alreadyEndorsed.exists) {
-      print("Already endorsed by $endorserUid");
-      return;
-    }
+    await FirebaseFirestore.instance.runTransaction((tx) async {
+      // Read endorsement first
+      final snap = await tx.get(endorsementRef);
+      if (snap.exists) {
+        print("Already endorsed by $endorserUid");
+        return;
+      }
 
-    await endorsementRef.set({
-      'userId': endorserUid,
-      'timestamp': FieldValue.serverTimestamp(),
+      // Read rating document before any writes
+      final ratingSnap = await tx.get(docRef);
+      final currentCount = (ratingSnap.data()?['endorsementCount'] ?? 0) as int;
+
+      // Now safe to write
+      tx.set(endorsementRef, {
+        'userId': endorserUid,
+        'timestamp': FieldValue.serverTimestamp(),
+      });
+
+      tx.update(docRef, {'endorsementCount': currentCount + 1});
     });
 
     print("Endorsement saved successfully for $endorserUid");
@@ -417,4 +426,6 @@ class HeatmapManager {
     print("Error endorsing rating: $e");
   }
 }
+
+
 }

@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:location/location.dart';
+import '../utils/account_lock_guard.dart';
 
 class FriendScreen extends StatefulWidget {
   const FriendScreen({super.key});
@@ -18,6 +19,16 @@ class _FriendScreenState extends State<FriendScreen> {
   DocumentSnapshot? _foundUser;
   final _auth = FirebaseAuth.instance;
 
+  @override
+  void initState() {
+   super.initState();
+
+   //Run the account lock check after first frame
+   WidgetsBinding.instance.addPostFrameCallback((_) {
+    AccountLockGuard.check(context);
+   });
+  }
+
   String generateDailyFriendCode(String uid) {
     final dateStr = DateFormat('yyyyMMdd').format(DateTime.now());
     final seed = uid + dateStr;
@@ -29,7 +40,6 @@ class _FriendScreenState extends State<FriendScreen> {
 
   void searchUserById() async {
     final searchId = _searchController.text.trim();
-    final currentUid = _auth.currentUser!.uid;
 
     print("🔍 Searching for UID: $searchId");
 

@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:math';
+import 'package:capstone/screens/LockedAccountScreen.dart';
 import 'package:capstone/screens/settings_screen.dart';
 import 'package:capstone/screens/CrowdSource_page.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -34,6 +35,8 @@ import '../services/heatmap_logic.dart';
 import 'package:wakelock_plus/wakelock_plus.dart'; // keep app awake
 import '../services/construction_service.dart'; // construction zones stream
 import '../services/crime_heatmap.dart'; // crime heatmap 
+import '../utils/account_lock_guard.dart';
+
 
 
 class MapPage extends StatefulWidget {
@@ -147,6 +150,7 @@ class _MapPageState extends State<MapPage> with WidgetsBindingObserver{ //Bindin
     super.initState();
     _maybeOpenOfflineIfNoInternet(); // check connectivity and open offline map if none
     _checkUserAuthentication();
+    AccountLockGuard.check(context);
     _initLocationDependentFeatures();
     getLocationUpdates().then((_) {
       getPolylinePoints().then(generatePolyline);
@@ -197,6 +201,7 @@ class _MapPageState extends State<MapPage> with WidgetsBindingObserver{ //Bindin
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) { // enable wakelock when map is open
       WakelockPlus.enable();
+      AccountLockGuard.check(context);
       } else if ( // disable wakelock for closed app
         state == AppLifecycleState.inactive ||
         state == AppLifecycleState.paused ||
@@ -204,7 +209,6 @@ class _MapPageState extends State<MapPage> with WidgetsBindingObserver{ //Bindin
       WakelockPlus.disable();
     }
   }
-
 
   void _checkUserAuthentication() {
     final user = FirebaseAuth.instance.currentUser;
