@@ -390,31 +390,6 @@ class _MapPageState extends State<MapPage> with WidgetsBindingObserver{ //Bindin
 
                       await _animateCamera(CameraUpdate.newLatLngZoom(coords, 13));
 
-                      String? label;
-
-                      //Try to get a place name using reverse goecodeing
-                      try{
-                        final details = await PlaceApiProvider().fetchNearestEstablishmentDetails(coords);
-                        label = details?['name'] ?? details?['formatted_address'];
-                      } catch(_){
-                        label = '${coords.latitude.toStringAsFixed(5)}, ${coords.longitude.toStringAsFixed(5)}';
-                      }
-
-                      final user = FirebaseAuth.instance.currentUser;
-                      if(user != null) {
-                        await FirebaseFirestore.instance
-                          .collection('users')
-                          .doc(user.uid)
-                          .collection('pinned_locations')
-                          .add({
-                            'lat': coords.latitude,
-                            'lng': coords.longitude,
-                            'label': label,
-                            'timestamp': FieldValue.serverTimestamp(),
-                            'isFavorite': false,
-                          });
-                      }
-
                       if (_origin != null && _destination != null) {
                         _createRoute();
                       }
@@ -1214,12 +1189,11 @@ Future<void> _cameraTo(LatLng pos) async {
   Widget _buildPinTile(QueryDocumentSnapshot doc, String uid) {
     final lat = doc['lat'];
     final lng = doc['lng'];
-    final label = doc['label'] ?? 'Lat: $lat, Lng: $lng';
     final isFav = doc['isFavorite'] == true;
 
     return ListTile(
       leading: Icon(isFav ? Icons.star : Icons.star_border),
-      title: Text(label),
+      title: Text('Lat: $lat, Lng: $lng'),
       trailing: IconButton(
         icon: Icon(isFav ? Icons.star : Icons.star_border),
         onPressed: () {
