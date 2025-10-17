@@ -119,11 +119,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   return null;
                 },
               ),
-              TextFormField(
-                controller: _phoneController,
-                decoration: const InputDecoration(labelText: 'Phone Number (+1234567890)'),
-              ),
-
+            
               const SizedBox(height: 24),
               Text(
                 "Safety Tolerances",
@@ -150,12 +146,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 value: _walkingSliderValue,
                 onChanged: (val) => setState(() => _walkingSliderValue = val),
               ),
-
-              ElevatedButton.icon(
-                icon: const Icon(Icons.phone),
-                label: const Text('Link Phone for MFA'),
-                onPressed: _linkPhoneNumber,
-              ),
               const SizedBox(height: 24),
               ElevatedButton.icon(
                 icon: const Icon(Icons.save),
@@ -163,6 +153,16 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 onPressed: _saveChanges,
               ),
 
+              const SizedBox(height: 24),
+              ElevatedButton.icon(
+                icon: const Icon(Icons.delete_forever),
+                label: const Text('Delete Account'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.red,
+                  foregroundColor: Colors.white,
+                ),
+                onPressed: _confirmDeleteAccount,
+              ),
               //Offline Maps button
               const SizedBox(height: 12),
               SizedBox(
@@ -193,67 +193,114 @@ class _SettingsScreenState extends State<SettingsScreen> {
       ),
     );
   }
-void _linkPhoneNumber() async {
-    final phone = _phoneController.text.trim();
-      if (phone.isEmpty) return;
 
-      await FirebaseAuth.instance.verifyPhoneNumber(
-        phoneNumber: phone,
-        verificationCompleted: (PhoneAuthCredential credential) async {
-          await FirebaseAuth.instance.currentUser?.linkWithCredential(credential);
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Phone number linked as MFA')),
-          );
-        },
-        verificationFailed: (e) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Verification failed: ${e.message}')),
-          );
-        },
-        codeSent: (verificationId, resendToken) async {
-          String? smsCode = await _askUserForSmsCode();
-          if (smsCode == null) return;
-
-          final credential = PhoneAuthProvider.credential(
-          verificationId: verificationId,
-          smsCode: smsCode,
-          );
-          await FirebaseAuth.instance.currentUser?.linkWithCredential(credential);
-
-          ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('MFA setup complete!')),
-          );
-        },
-        codeAutoRetrievalTimeout: (_) {},
-      );
-  }
-
-  Future<String?> _askUserForSmsCode() async {
-    String? smsCode;
-      await showDialog(
-      context: context,
-      builder: (context) {
-        final codeController = TextEditingController();
-        return AlertDialog(
-          title: const Text('Enter SMS Code'),
-          content: TextField(
-            controller: codeController,
-            keyboardType: TextInputType.number,
+void _confirmDeleteAccount() {
+  showDialog(
+    context: context,
+    builder: (context) => AlertDialog(
+      title: const Text('Confirm Deletion'),
+      content: const Text('This will permanently delete your account and data. Are you sure?'),
+      actions: [
+        TextButton(child: const Text('Cancel'),
+        onPressed: () => Navigator.pop(context),
+        ),
+        TextButton(
+          child: const Text('Delete'),
+          onPressed: () {
+            Navigator.pop(context);
+            _deleteAccount();
+          },
           ),
-          actions: [
-          TextButton(
-            onPressed: () {
-              smsCode = codeController.text.trim();
-              Navigator.of(context).pop();
-            },
-            child: const Text('Submit'),
-          )
-        ],
-      );
-    },
+      ],
+    )
   );
-  return smsCode;
 }
+
+Future<void> _deleteAccount() async {
+  final user = _auth.currentUser;
+  if(user == null) return;
+
+  setState(() => _loading = true);
+
+  try{
+    //Delete Firestore user data
+    await FirebaseFirestore.instance.collection('users')
+    .doc(user.uid).delete();
+
+    //Delete Auth account
+    await user.delete();
+
+    //Optionally sign out and redirect
+    await _auth.signOut();
+    if(context.mounted){
+      Navigator.of(context).popUntil((route) => route.isFirst);
+    }
+  } on FirebaseAuthException catch (e){
+    if(e.code == 'requires-recent-login'){
+        final success = await _reauthenticateUser();
+        if(success){
+          _deleteAccount();
+        } else{
+          ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Reauthentication failed')),
+          );
+        }
+      //Prompt for reauthentication here if needed
+    } else{
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error deleting account: ${e.message}')),
+      );
+    }
+  } finally{
+    setState(() => _loading = false);
+  }
+}
+
+  Future<bool> _reauthenticateUser() async {
+  final passwordController = TextEditingController();
+  final user = _auth.currentUser;
+
+  if (user?.email == null) return false;
+
+  return await showDialog<bool>(
+    context: context,
+    builder: (context) => AlertDialog(
+      title: const Text('Re-enter Password'),
+      content: TextField(
+        controller: passwordController,
+        obscureText: true,
+        decoration: const InputDecoration(labelText: 'Password'),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(false),
+          child: const Text('Cancel'),
+        ),
+        TextButton(
+          onPressed: () async {
+            final password = passwordController.text.trim();
+            final credential = EmailAuthProvider.credential(
+              email: user!.email!,
+              password: password,
+            );
+            try {
+              await user.reauthenticateWithCredential(credential);
+              Navigator.of(context).pop(true);
+            } on FirebaseAuthException catch (e) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(content: Text('Reauth failed: ${e.message}')),
+              );
+              Navigator.of(context).pop(false);
+            }
+          },
+          child: const Text('Confirm'),
+        ),
+      ],
+    ),
+  ) ?? false;
+}
+
+
 }
 
 class SliderPreference extends StatelessWidget {
