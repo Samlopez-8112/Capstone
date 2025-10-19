@@ -41,6 +41,8 @@ dependencies:
   flutter_secure_storage: ^9.0.0
   device_info_plus: ^10.0.1
   wakelock_plus: ^1.4.0
+  provider: ^6.1.2
+  shared_preferences: ^2.2.2
 
   # mapbox plugins
   mapbox_maps_flutter: ^2.9.0
@@ -115,6 +117,8 @@ flutter:
     - assets/icon/gas.png
     - assets/icon/police.png
     - assets/icon/mechanic.png
+    - assets/map_styles/light.json
+    - assets/map_styles/dark.json
 
   #   - images/a_dot_ham.jpeg
 

@@ -36,6 +36,9 @@ import 'package:wakelock_plus/wakelock_plus.dart'; // keep app awake
 import '../services/construction_service.dart'; // construction zones stream
 import '../services/crime_heatmap.dart'; // crime heatmap 
 import '../utils/account_lock_guard.dart';
+import 'package:flutter/services.dart'; 
+import 'package:provider/provider.dart';
+import '../theme_manager.dart'; // theme manager
 
 
 
@@ -275,6 +278,7 @@ class _MapPageState extends State<MapPage> with WidgetsBindingObserver{ //Bindin
                     _mapController.complete(controller);
                     _heatmap.scheduleBoundsRefresh(_mapController.future, () => setState(() {}));
                     _rebuildCrimeHeatmap(); // initialize the crime heatmap
+                    applyThemeBasedMapStyle(context, controller); // apply dark/light map theme
                   },
                   onCameraMove: (_) {
                     _heatmap.scheduleBoundsRefresh(_mapController.future, () => setState(() {}));
@@ -2421,5 +2425,24 @@ LatLngBounds _padBounds(LatLngBounds b, double pad) {
         duration: Duration(seconds: 5),
       ),
     );
+  }
+}
+
+// THEME-BASED MAP STYLE HANDLER
+Future<void> applyThemeBasedMapStyle(BuildContext context, GoogleMapController controller) async {
+  try {
+    final themeManager = Provider.of<ThemeManager>(context, listen: false);
+    final isDark = themeManager.themeMode == ThemeMode.dark;
+
+    final stylePath = isDark
+        ? 'assets/map_styles/dark.json'
+        : 'assets/map_styles/light.json';
+
+    final mapStyle = await rootBundle.loadString(stylePath);
+    await controller.setMapStyle(mapStyle);
+
+    debugPrint('Applied ${isDark ? "dark" : "light"} map style successfully');
+  } catch (e) {
+    debugPrint('⚠️ Error applying map style: $e');
   }
 }

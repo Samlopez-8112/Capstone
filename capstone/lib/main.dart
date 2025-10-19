@@ -9,62 +9,83 @@ import 'package:firebase_core/firebase_core.dart';
 import 'firebase_options.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_app_check/firebase_app_check.dart';
+import 'package:provider/provider.dart';
+import 'theme_manager.dart';
 
-void main() async{
+void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
   await Firebase.initializeApp(
     options: DefaultFirebaseOptions.currentPlatform,
   );
+
   await FirebaseAppCheck.instance.activate(
-    androidProvider: kReleaseMode ? AndroidProvider.playIntegrity
-    : AndroidProvider.debug,
-    appleProvider: kReleaseMode ? AppleProvider.appAttest : AppleProvider.debug, // Optional
-    
+    androidProvider:
+        kReleaseMode ? AndroidProvider.playIntegrity : AndroidProvider.debug,
+    appleProvider:
+        kReleaseMode ? AppleProvider.appAttest : AppleProvider.debug, // Optional
   );
+
   await setup();
 
-  runApp(const MyApp());
+  // Initialize theme manager before launching app
+  final themeManager = ThemeManager();
+  await themeManager.initialize();
+
+  runApp(
+    ChangeNotifierProvider<ThemeManager>.value(
+      value: themeManager,
+      child: const MyApp(),
+    ),
+  );
 }
 
-Future<void> setup() async{
-  await dotenv.load( // grab .env from discord, name ".env", and insert it in the project directory (alongside pubspec.yaml)
-    fileName: "env",    // just env for mac as it dont allow having filename .env
+Future<void> setup() async {
+  await dotenv.load(
+    // grab .env from discord, name ".env", and insert it in the project directory (alongside pubspec.yaml)
+    fileName: "env", // just env for mac as it dont allow having filename .env
   );
+
   MapboxOptions.setAccessToken(
     dotenv.env["MAPBOX_ACCESS_TOKEN"]!, // .env contains api tokens
-    );
-  
+  );
 }
 
 class MyApp extends StatelessWidget {
   const MyApp({super.key});
 
-  // This widget is the root of your application.
   @override
   Widget build(BuildContext context) {
+    // Access the ThemeManager provider here
+    final themeManager = Provider.of<ThemeManager>(context);
+
     return MaterialApp(
       title: 'Flutter Demo',
-      theme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(seedColor: Colors.deepPurple),
-      ),
+      debugShowCheckedModeBanner: false,
+      themeMode: themeManager.themeMode, // Light / Dark / Auto support
+      theme: ThemeData.light(),
+      darkTheme: ThemeData.dark(),
+      themeAnimationDuration: const Duration(milliseconds: 500),
+
       home: StreamBuilder<User?>(
         stream: FirebaseAuth.instance.authStateChanges(),
-        builder: (context, snapshot){
-          if(snapshot.connectionState == ConnectionState.waiting){
+        builder: (context, snapshot) {
+          if (snapshot.connectionState == ConnectionState.waiting) {
             return const Scaffold(
               body: Center(child: CircularProgressIndicator()),
             );
-          }else if (snapshot.hasData){
+          } else if (snapshot.hasData) {
             return const MapPage();
-          }else{
+          } else {
             return const AuthScreen();
           }
-        })
+        },
+      ),
     );
   }
 }
 
-// Speed Dial widget, still unfinished and left ti integrate with firebase or superbase that we use
+// Speed Dial widget, still unfinished and left to integrate with Firebase or Supabase that we use
 class LocationSpeedDial extends StatelessWidget {
   const LocationSpeedDial({super.key});
 
@@ -72,7 +93,7 @@ class LocationSpeedDial extends StatelessWidget {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text('Marking location as $type')),
     );
-    // TO DO: integrate with map and Firebase
+    // TODO: integrate with map and Firebase
   }
 
   @override
