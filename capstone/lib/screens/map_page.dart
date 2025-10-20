@@ -48,7 +48,13 @@ class MapPage extends StatefulWidget {
   State<MapPage> createState() => _MapPageState();
 }
 
-class _MapPageState extends State<MapPage> with WidgetsBindingObserver{ //BindingObserver used to keep app open
+class _MapPageState extends State<MapPage> with WidgetsBindingObserver{
+  // --- Custom crime marker icons (category-based) ---
+  final Map<CrimeCategory, BitmapDescriptor> _crimeIcons = {};
+  BitmapDescriptor? get _fallbackCrimeIcon => null;
+
+  // --- end custom marker icons ---
+ //BindingObserver used to keep app open
   final Completer<GoogleMapController> _mapController = Completer();
   final Location _location = Location();
 
@@ -150,7 +156,9 @@ class _MapPageState extends State<MapPage> with WidgetsBindingObserver{ //Bindin
 
   @override
   void initState() {
-    super.initState();
+    
+    _loadCrimeMarkerIcons();
+super.initState();
     _maybeOpenOfflineIfNoInternet(); // check connectivity and open offline map if none
     _checkUserAuthentication();
     AccountLockGuard.check(context);
@@ -2159,7 +2167,7 @@ LatLngBounds _padBounds(LatLngBounds b, double pad) {
       markers[mId] = Marker(
         markerId: mId,
         position: pos,
-        icon: BitmapDescriptor.defaultMarkerWithHue(sev.hue),
+        icon: _iconForIncident(c) ?? BitmapDescriptor.defaultMarkerWithHue(sev.hue),
         infoWindow: InfoWindow(
           title: '${c.offense} (${sev.label})', //offense title and severity on click
           snippet: _crimeSnippet(c),
@@ -2426,6 +2434,53 @@ LatLngBounds _padBounds(LatLngBounds b, double pad) {
       ),
     );
   }
+
+  //Load new custom crime marker icons
+  Future<void> _loadCrimeMarkerIcons() async {
+    try {
+      final cfg = const ImageConfiguration(size: Size(48, 48));
+      Future<BitmapDescriptor?> tryLoad(String asset) async {
+        try { return await BitmapDescriptor.fromAssetImage(cfg, asset); }
+        catch (_) { return null; }
+      }
+      final pairs = <CrimeCategory, String>{
+        CrimeCategory.violent:  'assets/markers/violentmarker.png',
+        CrimeCategory.vehicle:  'assets/markers/vehiclemarker.png',
+        CrimeCategory.theft:    'assets/markers/theftmarker.png',
+        CrimeCategory.property: 'assets/markers/propertymarker.png',
+        CrimeCategory.drug:     'assets/markers/drugmarker.png',
+        CrimeCategory.other:    'assets/markers/othermarker.png',
+      };
+      for (final entry in pairs.entries) {
+        final icon = await tryLoad(entry.value);
+        if (icon != null) _crimeIcons[entry.key] = icon;
+      }
+      if (mounted) setState(() {});
+    } catch (_) {}
+  }
+
+  CrimeCategory? _primaryCategoryFor(CrimeIncident c) {
+    final cats = _catsFor(c);
+    if (cats.isEmpty) return null;
+    const priority = <CrimeCategory>[
+      CrimeCategory.violent,
+      CrimeCategory.vehicle,
+      CrimeCategory.theft,
+      CrimeCategory.property,
+      CrimeCategory.drug,
+      CrimeCategory.other,
+    ];
+    for (final p in priority) {
+      if (cats.contains(p)) return p;
+    }
+    return cats.first;
+  }
+
+  BitmapDescriptor? _iconForIncident(CrimeIncident c) {
+    final primary = _primaryCategoryFor(c);
+    if (primary == null) return _fallbackCrimeIcon;
+    return _crimeIcons[primary] ?? _fallbackCrimeIcon;
+  }
 }
 
 // THEME-BASED MAP STYLE HANDLER
@@ -2446,3 +2501,5 @@ Future<void> applyThemeBasedMapStyle(BuildContext context, GoogleMapController c
     debugPrint('⚠️ Error applying map style: $e');
   }
 }
+
+

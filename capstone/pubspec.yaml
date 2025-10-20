@@ -119,6 +119,12 @@ flutter:
     - assets/icon/mechanic.png
     - assets/map_styles/light.json
     - assets/map_styles/dark.json
+    - assets/markers/violentmarker.png
+    - assets/markers/theftmarker.png
+    - assets/markers/vehiclemarker.png
+    - assets/markers/propertymarker.png
+    - assets/markers/drugmarker.png
+    - assets/markers/othermarker.png
 
   #   - images/a_dot_ham.jpeg
 
