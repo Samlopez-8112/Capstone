@@ -1,1 +1,0 @@
-const String GOOGLE_MAPS_API_KEY = "AIzaSyCmgSMq3ZxeKWd1Tdk0mM4kborbACyOQAk";

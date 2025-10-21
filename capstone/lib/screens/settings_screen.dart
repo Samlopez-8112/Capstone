@@ -29,6 +29,26 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   bool _loading = false;
 
+  // tri-state safety preferences: null = neutral, true = prefer, false = avoid
+  Map<String, bool?> _safetyPreferences = {
+    'Well-lit': null,
+    'Police presence': null,
+    'Quiet at night': null,
+    'Busy foot traffic': null,
+    'Loitering': null,
+    'Graffiti/vandalism': null,
+    'Poor lighting': null,
+    'Suspicious activity': null,
+    'Reports of crime': null,
+    'Clean and maintained': null,
+    'Security cameras': null,
+    'Active neighborhood watch': null,
+    'Nearby schools or parks': null,
+    'Frequent police sirens': null,
+    'Abandoned buildings': null,
+    'Shops open late': null,
+  };
+
   @override
   void initState() {
     super.initState();
@@ -169,6 +189,35 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 value: _walkingSliderValue,
                 onChanged: (val) => setState(() => _walkingSliderValue = val),
               ),
+
+              const SizedBox(height: 12),
+              // --- Prefer areas with (tri-state checkboxes) ---
+              const Text(
+                'Prefer areas with:',
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+              ),
+              const SizedBox(height: 8),
+              Column(
+                children: [
+                  _TriStateRow(label: 'Well-lit'),
+                  _TriStateRow(label: 'Police presence'),
+                  _TriStateRow(label: 'Quiet at night'),
+                  _TriStateRow(label: 'Busy foot traffic'),
+                  _TriStateRow(label: 'Loitering'),
+                  _TriStateRow(label: 'Graffiti/vandalism'),
+                  _TriStateRow(label: 'Poor lighting'),
+                  _TriStateRow(label: 'Suspicious activity'),
+                  _TriStateRow(label: 'Reports of crime'),
+                  _TriStateRow(label: 'Clean and maintained'),
+                  _TriStateRow(label: 'Security cameras'),
+                  _TriStateRow(label: 'Active neighborhood watch'),
+                  _TriStateRow(label: 'Nearby schools or parks'),
+                  _TriStateRow(label: 'Frequent police sirens'),
+                  _TriStateRow(label: 'Abandoned buildings'),
+                  _TriStateRow(label: 'Shops open late'),
+                ],
+              ),
+
 
               // ---------------- ACTION BUTTONS ----------------
               const SizedBox(height: 24),
@@ -346,6 +395,76 @@ class SliderPreference extends StatelessWidget {
           onChanged: onChanged,
         ),
       ],
+    );
+  }
+}
+
+
+class _TriStateRow extends StatefulWidget {
+  final String label;
+  const _TriStateRow({required this.label});
+
+  @override
+  State<_TriStateRow> createState() => _TriStateRowState();
+}
+
+class _TriStateRowState extends State<_TriStateRow> {
+  void _toggleState() {
+    final parent = context.findAncestorStateOfType<_SettingsScreenState>()!;
+    parent.setState(() {
+      final current = parent._safetyPreferences[widget.label];
+      if (current == null) {
+        parent._safetyPreferences[widget.label] = true; // prefer
+      } else if (current == true) {
+        parent._safetyPreferences[widget.label] = false; // avoid
+      } else {
+        parent._safetyPreferences[widget.label] = null; // back to neutral
+      }
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final parent = context.findAncestorStateOfType<_SettingsScreenState>()!;
+    final value = parent._safetyPreferences[widget.label];
+
+    Color fillColor() {
+      if (value == true) return Colors.green;
+      if (value == false) return Colors.red;
+      return Colors.grey.shade400;
+    }
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 6.0), // <-- adds vertical spacing
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          InkWell(
+            onTap: _toggleState,
+            child: Container(
+              width: 24,
+              height: 24,
+              decoration: BoxDecoration(
+                color: fillColor(),
+                borderRadius: BorderRadius.circular(4),
+                border: Border.all(color: Colors.black26),
+              ),
+              child: value == true
+                  ? const Icon(Icons.check, color: Colors.white, size: 18)
+                  : (value == false
+                      ? const Icon(Icons.close, color: Colors.white, size: 18)
+                      : null),
+            ),
+          ),
+          const SizedBox(width: 12), // <-- adds horizontal space between box and label
+          Expanded(
+            child: Text(
+              widget.label,
+              style: const TextStyle(fontSize: 16),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

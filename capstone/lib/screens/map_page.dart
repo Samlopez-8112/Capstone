@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:math';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:capstone/screens/LockedAccountScreen.dart';
 import 'package:capstone/screens/settings_screen.dart';
 import 'package:capstone/screens/CrowdSource_page.dart';
@@ -15,7 +16,6 @@ import 'package:location/location.dart' hide LocationAccuracy;
 import 'package:url_launcher/url_launcher.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:path_provider/path_provider.dart';
-import '../consts.dart';
 import '../models/poi_category.dart';
 import '../services/places_service.dart';
 import '../widgets/autocomplete_search_bar.dart';
@@ -119,6 +119,7 @@ class _MapPageState extends State<MapPage> with WidgetsBindingObserver{
   StreamSubscription<Position>? _positionStream;
   int _currentStepIndex = 0;
   bool _isSidebarOpen = false;
+  final google_maps_key = dotenv.env['GOOGLE_MAPS_API_KEY'] ?? '';
 
   // Nearby search state
   double _searchRadius = 2000;
@@ -177,7 +178,7 @@ super.initState();
     // Listen for location updates
     final locationSettings = LocationSettings(
       accuracy: LocationAccuracy.bestForNavigation,
-      distanceFilter: 10, // meters before triggering update
+      distanceFilter: 2, // meters before triggering update
     );
 
     _positionStream =
@@ -851,7 +852,7 @@ Future<void> _cameraTo(LatLng pos) async {
       '&destination=${_destination!.latitude},${_destination!.longitude}'
       '&mode=$_travelMode'
       '&departure_time=now'
-      '&key=$GOOGLE_MAPS_API_KEY',
+      '&key=$google_maps_key',
     );
 
     final List<LatLng> coords = [];
@@ -919,7 +920,7 @@ Future<void> _cameraTo(LatLng pos) async {
       '&destination=$destLat,$destLng'
       '&mode=$mode'
       '&departure_time=now'
-      '&key=$GOOGLE_MAPS_API_KEY',
+      '&key=$google_maps_key',
     );
 
     final response = await http.get(url);
