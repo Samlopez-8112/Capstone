@@ -119,6 +119,7 @@ class _MapPageState extends State<MapPage> with WidgetsBindingObserver{
   StreamSubscription<Position>? _positionStream;
   int _currentStepIndex = 0;
   bool _isSidebarOpen = false;
+  bool _showStepPolylines = true;
   final google_maps_key = dotenv.env['GOOGLE_MAPS_API_KEY'] ?? '';
 
   // Nearby search state
@@ -949,26 +950,98 @@ Future<void> _cameraTo(LatLng pos) async {
   }
 
   Future<void> _createRoute() async {
-    // generate route
-    final points = await getPolylinePoints();
-    generatePolyline(points);
+    setState(() {
+      polylines.clear();
+    });
 
-    // fetch step-by-step directions
-    if (_origin != null && _destination != null) {
-      final steps = await _getDirectionsWithSteps(
-        _origin!.latitude,
-        _origin!.longitude,
-        _destination!.latitude,
-        _destination!.longitude,
-        _travelMode,
-      );
+    final url = Uri.parse(
+      'https://maps.googleapis.com/maps/api/directions/json'
+      '?origin=${_origin!.latitude},${_origin!.longitude}'
+      '&destination=${_destination!.latitude},${_destination!.longitude}'
+      '&mode=$_travelMode'
+      '&departure_time=now'
+      '&key=$google_maps_key',
+    );
 
-      setState(() {
-        _showModeButtons = true;
-        _steps = steps;
-      });
+    try {
+      final response = await http.get(url);
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        final routes = data['routes'] as List?;
+        if (routes == null || routes.isEmpty) return;
+
+        final legs = routes[0]['legs'] as List?;
+        if (legs == null || legs.isEmpty) return;
+
+        final steps = legs[0]['steps'] as List? ?? [];
+        final polylinePoints = PolylinePoints();
+
+        // --- OPTION 1: Step-by-step polylines ---
+        if (_showStepPolylines) {
+          int polyIndex = 0;
+          for (final step in steps) {
+            final encoded = step['polyline']?['points'];
+            if (encoded == null) continue;
+
+            final decoded = polylinePoints.decodePolyline(encoded);
+            final linePoints = decoded
+                .map((p) => LatLng(p.latitude, p.longitude))
+                .toList();
+
+            final id = PolylineId('step_$polyIndex');
+            polylines[id] = Polyline(
+              polylineId: id,
+              color: Colors.blue,
+              width: 6,
+              points: linePoints,
+            );
+            polyIndex++;
+          }
+        }
+
+        // --- OPTION 2: Single combined polyline ---
+        else {
+          final overview = routes[0]['overview_polyline']?['points'] as String?;
+          if (overview != null) {
+            final decoded = polylinePoints.decodePolyline(overview);
+            final points = decoded
+                .map((p) => LatLng(p.latitude, p.longitude))
+                .toList();
+
+            const id = PolylineId('route');
+            polylines[id] = Polyline(
+              polylineId: id,
+              color: Colors.blue,
+              width: 6,
+              points: points,
+            );
+          }
+        }
+
+        // Parse step info for display / speech
+        final parsedSteps = steps
+            .map((s) => {
+                  'instruction': s['html_instructions'],
+                  'distance': s['distance']?['text'],
+                  'duration': s['duration']?['text'],
+                  'start': s['start_location'],
+                  'end': s['end_location'],
+                })
+            .toList();
+
+        setState(() {
+          _steps = parsedSteps;
+          _showModeButtons = true;
+        });
+
+        _checkRouteForConstruction();
+      } else {
+        debugPrint('Directions API error: ${response.statusCode}');
+      }
+    } catch (e) {
+      debugPrint('Directions API call failed: $e');
     }
-  }
+}
 
   // text-to-speech
   Future<void> _speakStep(String text) async {
