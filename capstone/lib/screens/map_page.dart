@@ -591,8 +591,8 @@ super.initState();
                     ),
                   ),
 
-                /*// Sign-out button
-                Positioned(
+                // Sign-out button
+                /*Positioned(
                   top: 80,
                   right: 10,
                   child: ElevatedButton(
@@ -660,73 +660,74 @@ super.initState();
                   ),
 
                 // Speed dial: nearby search by category
-              Positioned(
-  bottom: 75,
-  left: 20,
-  child: FloatingActionButton.extended(
-    icon: const Icon(Icons.place),
-    label: const Text("Services"),
-    backgroundColor: Colors.blueAccent,
-    onPressed: () {
-      showModalBottomSheet(
-        context: context,
-        showDragHandle: true,
-        builder: (context) {
-          return StatefulBuilder(
-            builder: (context, setLocal) {
-              return Padding(
-                padding: const EdgeInsets.all(16),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    const Text(
-                      "Nearby Search",
-                      style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-                    ),
-                    const SizedBox(height: 12),
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        const Text("Radius:"),
-                        Text("${(_searchRadius / 1609.34).toStringAsFixed(1)} mi"),
-                      ],
-                    ),
-                    Slider(
-                      value: _searchRadius / 1609.34,
-                      min: 0.1,
-                      max: 5.0,
-                      divisions: 49,
-                      label: '${(_searchRadius / 1609.34).toStringAsFixed(1)} mi',
-                      onChanged: (value) {
-                        setLocal(() => _searchRadius = value * 1609.34);
-                      },
-                    ),
-                    const SizedBox(height: 8),
-                    Wrap(
-                      spacing: 12,
-                      runSpacing: 12,
-                      children: PoiCategory.values.map((cat) {
-                        return ElevatedButton.icon(
-                          icon: Image.asset(cat.iconPath, height: 20),
-                          label: Text(cat.label),
-                          onPressed: () {
-                            Navigator.pop(context);
-                            setState(() => isFollowingUser = false);
-                            _fetchCategoryPOIs(cat);
+                Positioned(
+                  bottom: 25,
+                  left: 20,
+                  child: FloatingActionButton(
+                    heroTag: "servicesBtn",
+                    backgroundColor: Colors.blueAccent,
+                    tooltip: 'Nearby Services',
+                    onPressed: () {
+                      showModalBottomSheet(
+                        context: context,
+                        showDragHandle: true,
+                        builder: (context) {
+                          return StatefulBuilder(
+                            builder: (context, setLocal) {
+                              return Padding(
+                                padding: const EdgeInsets.all(16),
+                                child: Column(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    const Text(
+                                       "Nearby Search",
+                                        style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                                      ),
+                                      const SizedBox(height: 12),
+                                      Row(
+                                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                        children: [
+                                          const Text("Radius:"),
+                                          Text("${(_searchRadius / 1609.34).toStringAsFixed(1)} mi"),
+                                        ],
+                                      ),
+                                      Slider(
+                                        value: _searchRadius / 1609.34,
+                                        min: 0.1,
+                                        max: 5.0,
+                                        divisions: 49,
+                                        label: '${(_searchRadius / 1609.34).toStringAsFixed(1)} mi',
+                                        onChanged: (value) {
+                                          setLocal(() => _searchRadius = value * 1609.34);
+                                        },
+                                      ),
+                                      const SizedBox(height: 8),
+                                      Wrap(
+                                        spacing: 12,
+                                        runSpacing: 12,
+                                        children: PoiCategory.values.map((cat) {
+                                          return ElevatedButton.icon(
+                                            icon: Image.asset(cat.iconPath, height: 20),
+                                            label: Text(cat.label),
+                                            onPressed: () {
+                                              Navigator.pop(context);
+                                              setState(() => isFollowingUser = false);
+                                              _fetchCategoryPOIs(cat);
+                                            },
+                                          );
+                                        }).toList(),
+                                      ),
+                                    ],
+                                  ),
+                                );
+                              },
+                            );
                           },
                         );
-                      }).toList(),
+                      },
+                      child: const Icon(Icons.place),
                     ),
-                  ],
-                ),
-              );
-            },
-          );
-        },
-      );
-    },
-  ),
-),
+                  ),
 
                 // Toggle follow user + clear temp overlays
                 Positioned(
