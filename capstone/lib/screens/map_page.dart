@@ -429,64 +429,55 @@ super.initState();
                 // route mode buttons
                 if (_showModeButtons)
                   Positioned(
-                    top: 80,
+                    top: 95,
                     left: 15,
                     child: Row(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        ElevatedButton(
-                          onPressed: () async {
-                            setState(() {
-                              _travelMode = "driving";
-                            });
-                            _createRoute();
-                          },
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: _travelMode == "driving"
-                                ? Colors.blue
-                                : Colors.grey[300],
-                            foregroundColor: _travelMode == "driving"
-                                ? Colors.white
-                                : Colors.black,
-                          ),
-                          child: const Text("Car"),
+                        SizedBox(
+                          width: 60,
+                          height: 35,
+                          child:
+                          FloatingActionButton(
+                            onPressed: () async {
+                              setState(() {
+                                _travelMode = "driving";
+                              });
+                              _createRoute();
+                            },
+                            child: const Text("Car"),
+                          )
                         ),
-                        const SizedBox(width: 8),
-                        ElevatedButton(
-                          onPressed: () async {
-                            setState(() {
-                              _travelMode = "bicycling";
-                            });
-                            _createRoute();
-                          },
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: _travelMode == "bicycling"
-                                ? Colors.blue
-                                : Colors.grey[300],
-                            foregroundColor: _travelMode == "bicycling"
-                                ? Colors.white
-                                : Colors.black,
-                          ),
-                          child: const Text("Bike"),
+                        const SizedBox(width: 10),
+                        SizedBox(
+                          width: 60,
+                          height: 35,
+                          child:
+                          FloatingActionButton(
+                            onPressed: () async {
+                              setState(() {
+                                _travelMode = "bicycling";
+                              });
+                              _createRoute();
+                            },
+                            child: const Text("Bike"),
+                          )
                         ),
-                        const SizedBox(width: 8),
-                        ElevatedButton(
-                          onPressed: () async {
-                            setState(() {
-                              _travelMode = "walking";
-                            });
-                            _createRoute();
-                          },
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: _travelMode == "walking"
-                                ? Colors.blue
-                                : Colors.grey[300],
-                            foregroundColor: _travelMode == "walking"
-                                ? Colors.white
-                                : Colors.black,
-                          ),
-                          child: const Text("Walk"),
-                        ),
+                        const SizedBox(width: 10),
+                        SizedBox(
+                          width: 60,
+                          height: 35,
+                          child:
+                          FloatingActionButton(
+                            onPressed: () async {
+                              setState(() {
+                                _travelMode = "walking";
+                              });
+                              _createRoute();
+                            },
+                            child: const Text("Walk"),
+                          )
+                        )
                       ],
                     ),
                   ),
@@ -498,7 +489,7 @@ super.initState();
                     left: 15,
                     child: FloatingActionButton(
                       heroTag: "cancelRouteBtn",
-                      backgroundColor: Colors.red,
+                      foregroundColor: Colors.red,
                       onPressed: _cancelRoute,
                       child: const Icon(Icons.close),
                     ),
@@ -523,6 +514,7 @@ super.initState();
                             child: Text(
                               "Turn-by-Turn Directions",
                               style: TextStyle(
+                                color: Colors.black,
                                 fontSize: 18,
                                 fontWeight: FontWeight.bold,
                               ),
@@ -580,8 +572,8 @@ super.initState();
                     left: 80,
                     child: FloatingActionButton(
                       heroTag: "TBTNavBtn",
-                      backgroundColor: Colors.white,
-                      foregroundColor: Colors.black,
+                      //backgroundColor: Colors.white,
+                      foregroundColor: Colors.blue,
                       onPressed: () {
                         setState(() {
                           _isSidebarOpen = !_isSidebarOpen;
