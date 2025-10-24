@@ -24,7 +24,7 @@
   },
   "functions": [
     {
-      "source": "custon-functions",
+      "source": "functions",
       "codebase": "functions",
       "ignore": [
         "node_modules",

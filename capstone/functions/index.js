@@ -51,7 +51,7 @@ function decrypt(text, base64Key) {
 }
 
 // 🔐 Lock Account Function
- exports.lockAccount = functions.https.onRequest(async (req, res) => {
+exports.lockAccount = functions.https.onRequest(async (req, res) => {
   try {
     const uid = req.query.uid;
     const encryptedUid = req.query.uid;
@@ -81,3 +81,94 @@ function decrypt(text, base64Key) {
     res.status(400).send("⚠️ Error processing lock request.");
   }
 });
+
+// Express REST API (Safe Routes, Construction, Crime Zones, Reviews)
+const express = require("express");
+const cors = require("cors");
+const db = admin.firestore();
+
+const app = express();
+app.use(cors({ origin: true }));
+app.use(express.json());
+
+// Root endpoint (for testing)
+app.get("/", (req, res) => {
+  res.status(200).send({
+    message: "🚀 SafeRoute API is live",
+    endpoints: ["/safe-routes", "/construction", "/crime-zones", "/reviews"]
+  });
+});
+
+// --- Safe Routes ---
+app.get("/safe-routes", async (req, res) => {
+  try {
+    const snap = await db.collection("safe_routes").get();
+    const data = snap.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
+    res.json({ success: true, data });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// --- Construction Zones ---
+app.get("/construction", async (req, res) => {
+  try {
+    const snap = await db.collection("construction_zones").get();
+    const data = snap.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
+    res.json({ success: true, data });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// --- Crime Zones ---
+app.get("/crime-zones", async (req, res) => {
+  try {
+    const { lat, lng } = req.query;
+    const crimes = await db.collection("crime_zones").get();
+
+    let filtered = crimes.docs.map((doc) => doc.data());
+    if (lat && lng) {
+      const latitude = parseFloat(lat);
+      const longitude = parseFloat(lng);
+      filtered = filtered.filter(
+        (z) =>
+          Math.abs(z.lat - latitude) <= 0.1 &&
+          Math.abs(z.lng - longitude) <= 0.1
+      );
+    }
+
+    res.json({ success: true, data: filtered });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// --- Reviews ---
+app.get("/reviews", async (req, res) => {
+  try {
+    const snap = await db.collection("reviews").get();
+    res.json({ success: true, data: snap.docs.map((doc) => doc.data()) });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+app.post("/reviews", async (req, res) => {
+  try {
+    const { userId, rating, comment } = req.body;
+    const review = {
+      userId,
+      rating,
+      comment,
+      createdAt: new Date(),
+    };
+    await db.collection("reviews").add(review);
+    res.json({ success: true, data: review });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// Export Express API endpoint
+exports.api = functions.https.onRequest(app);
