@@ -299,7 +299,7 @@ class HeatmapManager {
               ]),
               Text('$count ratings submitted',
                   style: Theme.of(context).textTheme.bodySmall),
-                Text('$endorsements endorsements',
+                Text('$endorsements Watchers',
                   style: Theme.of(context).textTheme.bodySmall),
               if (timestamp != null)
                 Text('Updated: ${timestamp.toLocal()}',
@@ -310,8 +310,8 @@ class HeatmapManager {
               const SizedBox(height: 16),
               Center(
                 child: ElevatedButton.icon(
-                  icon: const Icon(Icons.thumb_up_outlined),
-                  label: const Text('Endorse this area'),
+                  icon: const Icon(Icons.visibility_outlined),
+                  label: const Text('Watch this area'),
                   onPressed: () async {
                     final userId = FirebaseAuth.instance.currentUser?.uid;
                     if (userId != null && center['lat'] != null && center['lng'] != null) {

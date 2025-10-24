@@ -26,7 +26,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   late TextEditingController _displayNameController;
   late TextEditingController _emailController;
   late TextEditingController _passwordController;
-  TextEditingController _phoneController = TextEditingController();
+  //TextEditingController _phoneController = TextEditingController();
 
   bool _loading = false;
 

@@ -247,23 +247,6 @@ super.initState();
                     "Location access is required to display the map.",
                     textAlign: TextAlign.center,
                   ),
-                  const SizedBox(height: 12),
-                  ElevatedButton.icon(
-                    icon: const Icon(Icons.location_on),
-                    label: const Text("Grant Location Access"),
-                    onPressed: () async {
-                      final granted =
-                          await requestLocationPermission(context);
-                      if (granted) {
-                        await _initLocationDependentFeatures();
-                      } else {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(
-                              content: Text("Location permission denied.")),
-                        );
-                      }
-                    },
-                  ),
                 ],
               ),
             )
@@ -677,31 +660,73 @@ super.initState();
                   ),
 
                 // Speed dial: nearby search by category
-                Positioned(
-                  bottom: 20,
-                  left: 20,
-                  child: SpeedDial(
-                    icon: Icons.place,
-                    activeIcon: Icons.close,
-                    backgroundColor: Colors.blueAccent,
-                    spacing: 12,
-                    shape: RoundedRectangleBorder(borderRadius:BorderRadius.circular(16)),
-                    onOpen: () => setState(() => _isDialOpen = true),
-                    onClose: () => setState(() => _isDialOpen = false),
-                    children: PoiCategory.values.map((cat) {
-                      return SpeedDialChild(
-                        child: Image.asset(cat.iconPath, height: 24),
-                        label: cat.label,
-                        onTap: () {
-                          setState(() {
-                            isFollowingUser = false;
-                          });
-                          _fetchCategoryPOIs(cat);
-                        },
-                      );
-                    }).toList(),
-                  ),
+              Positioned(
+  bottom: 75,
+  left: 20,
+  child: FloatingActionButton.extended(
+    icon: const Icon(Icons.place),
+    label: const Text("Services"),
+    backgroundColor: Colors.blueAccent,
+    onPressed: () {
+      showModalBottomSheet(
+        context: context,
+        showDragHandle: true,
+        builder: (context) {
+          return StatefulBuilder(
+            builder: (context, setLocal) {
+              return Padding(
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Text(
+                      "Nearby Search",
+                      style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                    ),
+                    const SizedBox(height: 12),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        const Text("Radius:"),
+                        Text("${(_searchRadius / 1609.34).toStringAsFixed(1)} mi"),
+                      ],
+                    ),
+                    Slider(
+                      value: _searchRadius / 1609.34,
+                      min: 0.1,
+                      max: 5.0,
+                      divisions: 49,
+                      label: '${(_searchRadius / 1609.34).toStringAsFixed(1)} mi',
+                      onChanged: (value) {
+                        setLocal(() => _searchRadius = value * 1609.34);
+                      },
+                    ),
+                    const SizedBox(height: 8),
+                    Wrap(
+                      spacing: 12,
+                      runSpacing: 12,
+                      children: PoiCategory.values.map((cat) {
+                        return ElevatedButton.icon(
+                          icon: Image.asset(cat.iconPath, height: 20),
+                          label: Text(cat.label),
+                          onPressed: () {
+                            Navigator.pop(context);
+                            setState(() => isFollowingUser = false);
+                            _fetchCategoryPOIs(cat);
+                          },
+                        );
+                      }).toList(),
+                    ),
+                  ],
                 ),
+              );
+            },
+          );
+        },
+      );
+    },
+  ),
+),
 
                 // Toggle follow user + clear temp overlays
                 Positioned(

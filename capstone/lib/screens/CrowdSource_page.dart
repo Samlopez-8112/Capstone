@@ -31,7 +31,6 @@ class _RateAreaScreenState extends State<RateAreaScreen> {
     'Reports of crime',
     'Clean and maintained',
     'Security cameras',
-    'Poor lighting',
     'Active neighborhood watch',
     'Nearby schools or parks',
     'Frequent police sirens',
@@ -141,25 +140,6 @@ class _RateAreaScreenState extends State<RateAreaScreen> {
       padding: const EdgeInsets.all(16.0),
       child: Column(
         children: [
-          Row(
-            children: [
-              IconButton(
-                icon: const Icon(Icons.arrow_back),
-                onPressed: () => setState(() => _selectedPin = null),
-                tooltip: 'Choose a different pin',
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Text(
-                  'Selected: ${lat.toStringAsFixed(5)}, ${lng.toStringAsFixed(5)}',
-                  style: const TextStyle(fontWeight: FontWeight.w600),
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
-
           // Radius slider 0–2 miles
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
