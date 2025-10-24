@@ -19,6 +19,9 @@ class CrimeHeatmap {
   final double opacityLow;     
   final double layerFalloff;   // opacity fade per layer
   final bool clipToViewport;   // if true, drops crimes outside the provided bounds
+  final int minMediumClusterCount;      // how many medium incidents needed nearby
+  final double clusterOverlapFraction;  // ~0.5 => require ~50% overlap
+
 
   // values for crime instance circles
   CrimeHeatmap({
@@ -30,6 +33,8 @@ class CrimeHeatmap {
     this.opacityLow = 0.08,
     this.layerFalloff = 0.70,
     this.clipToViewport = true,
+    this.minMediumClusterCount = 3,
+    this.clusterOverlapFraction = 0.5
   });
 
   /// Build circles from crime list
@@ -59,43 +64,100 @@ class CrimeHeatmap {
       buckets.putIfAbsent(bucketKey, () => _Bucket(pos)).add(c);
     }
 
-    // For each area, display circles with opacity based on crime severity rating
-    int serial = 0;
-    buckets.forEach((_, bucket) {
-      final severityWeight = _weightedSeverity(bucket.crimes);
-      final CrimeSeverity top = severityWeight.top;
-      final double w = severityWeight.weight; // [0..1]
+  // For each area, display circles with rules:
+// - High: always
+// - Medium: only if clustered strongly
+// - Low: never
+int serial = 0;
 
-      final LatLng center = bucket.center;
-      final double baseR = baseRadiusMeters * (1.0 + (top == CrimeSeverity.high ? 0.30 : top == CrimeSeverity.medium ? 0.15 : 0.0));
+// Precompute medium incident positions for quick neighborhood checks
+final List<LatLng> mediumPositions = [];
+buckets.forEach((_, b) {
+  for (final c in b.crimes) {
+    final s = classifySeverity(c.offense);
+    if (s == CrimeSeverity.medium) mediumPositions.add(c.position);
+  }
+});
 
-      // determine opacity of a circle using severity and associated value
-      final double innerAlpha = switch (top) {
-        CrimeSeverity.high   => opacityHigh * w,
-        CrimeSeverity.medium => opacityMedium * w,
-        CrimeSeverity.low    => opacityLow * w,
-      };
+buckets.forEach((_, bucket) {
+  final severityWeight = _weightedSeverity(bucket.crimes);
+  final CrimeSeverity top = severityWeight.top;
+  final double w = severityWeight.weight;
 
-      // build circle with cocentric fading rings
-      for (int i = 0; i < layers; i++) {
-        final double r = baseR * (1.0 + i * radiusStep);
-        final double fade = math.pow(layerFalloff, i).toDouble();
-        final int alpha = (255.0 * (innerAlpha * fade)).clamp(10.0, 255.0).toInt();
+  // Base radius is already severity-aware in your code
+  final LatLng center = bucket.center;
+  final double baseR = baseRadiusMeters *
+      (1.0 + (top == CrimeSeverity.high ? 0.30 : top == CrimeSeverity.medium ? 0.15 : 0.0));
 
-        final id = CircleId('$idPrefix${serial}_$i');
-        out.add(Circle(
-          circleId: id,
-          center: center,
-          radius: r,
-          fillColor: Color.fromARGB(alpha, 255, 0, 0), // red shades
-          strokeColor: Colors.transparent,
-          strokeWidth: 0,
-          zIndex: 1, // draws above map
-        ));
+  // ----- NEW: decide whether to draw based on severity -----
+  bool shouldDraw = false;
+  if (top == CrimeSeverity.high) {
+    // High → always show
+    shouldDraw = true;
+  } else if (top == CrimeSeverity.medium) {
+    shouldDraw = true; // temporarily, always show medium markers
+    // Medium → require a local cluster so the circles would overlap >= ~50%
+    // Approximate by counting medium incidents within (clusterOverlapFraction * baseR)
+    final double neighborhoodMeters = clusterOverlapFraction * baseR;
+
+    int nearbyMediums = 0;
+    // quick degrees-per-meter at this latitude
+    final double dLatPerM = 1 / 111000.0;
+    final double dLonPerM = 1 / (111000.0 * math.cos(center.latitude * math.pi / 180));
+
+    final double latWin = neighborhoodMeters * dLatPerM;
+    final double lonWin = neighborhoodMeters * dLonPerM;
+
+    for (final p in mediumPositions) {
+      // fast AABB prune, then precise distance (approx.)
+      if ((p.latitude - center.latitude).abs() <= latWin &&
+          (p.longitude - center.longitude).abs() <= lonWin) {
+        final double dMeters = _haversineMeters(center, p);
+        if (dMeters <= neighborhoodMeters) nearbyMediums++;
       }
+      if (nearbyMediums >= minMediumClusterCount) {
+        shouldDraw = true;
+        break;
+      }
+    }
+  } else {
+    // Low → never show
+    shouldDraw = false;
+  }
 
-      serial++;
-    });
+  if (!shouldDraw) {
+    return; // skip drawing this bucket
+  }
+  // ---------------------------------------
+
+  // determine opacity of a circle using severity and associated value (your code)
+  final double innerAlpha = switch (top) {
+    CrimeSeverity.high   => opacityHigh * w,
+    CrimeSeverity.medium => opacityMedium * w,
+    CrimeSeverity.low    => opacityLow * w,
+  };
+
+  // build circle with concentric fading rings (your code)
+  for (int i = 0; i < layers; i++) {
+    final double r = baseR * (1.0 + i * radiusStep);
+    final double fade = math.pow(layerFalloff, i).toDouble();
+    final int alpha = (255.0 * (innerAlpha * fade)).clamp(10.0, 255.0).toInt();
+
+    final id = CircleId('$idPrefix${serial}_$i');
+    out.add(Circle(
+      circleId: id,
+      center: center,
+      radius: r,
+      fillColor: Color.fromARGB(alpha, 255, 0, 0),
+      strokeColor: Colors.transparent,
+      strokeWidth: 0,
+      zIndex: 1,
+    ));
+  }
+
+  serial++;
+});
+
 
     return out;
   }
@@ -160,3 +222,16 @@ class CrimeHeatmap {
     final int iLon = (lon / dLon).round();
     return '$iLat:$iLon';
   }
+
+  double _haversineMeters(LatLng a, LatLng b) {
+  const R = 6371000.0; // meters
+  final dLat = (b.latitude - a.latitude) * math.pi / 180.0;
+  final dLon = (b.longitude - a.longitude) * math.pi / 180.0;
+  final la1 = a.latitude * math.pi / 180.0;
+  final la2 = b.latitude * math.pi / 180.0;
+  final h = math.sin(dLat/2) * math.sin(dLat/2) +
+            math.cos(la1) * math.cos(la2) *
+            math.sin(dLon/2) * math.sin(dLon/2);
+  return 2 * R * math.asin(math.sqrt(h));
+}
+

@@ -39,7 +39,8 @@ import '../utils/account_lock_guard.dart';
 import 'package:flutter/services.dart'; 
 import 'package:provider/provider.dart';
 import '../theme_manager.dart'; // theme manager
-
+// Toggle this to force mock locally (still keeps auto-fallback on error):
+const bool kForceMockCrimes = false;
 
 
 class MapPage extends StatefulWidget {
@@ -274,6 +275,11 @@ super.initState();
                     zoom: 13,
                   ),
                   myLocationEnabled: true,
+                  // google buttons removed here
+                  zoomControlsEnabled: false,
+                  mapToolbarEnabled: false,
+                  myLocationButtonEnabled: false, 
+                  // markers handled here
                   markers: _showCrimeMarkers ? Set<Marker>.of(markers.values) : <Marker>{},
                   polylines: Set<Polyline>.of(polylines.values),
                   // _allCircles holds community, crime, and construction circles.
@@ -304,7 +310,7 @@ super.initState();
                 // Filter icon
                 if (_isCrimeViewActive)
                   Positioned(
-                    top: 168,
+                    top: 138,
                     right: 16,
                     child: Material(
                       color: Colors.white,
@@ -321,7 +327,7 @@ super.initState();
                 // Toggle markers icon 
                 if (_isCrimeViewActive)
                   Positioned(
-                    top: 220,
+                    top: 190,
                     right: 16,
                     child: Material(
                       color: Colors.white,
@@ -345,7 +351,7 @@ super.initState();
                 // Toggle heatmap button
                 if (_isCrimeViewActive)
                   Positioned(
-                    top: 274,
+                    top: 244,
                     right: 16,
                     child: Material(
                       color: Colors.white,
@@ -373,7 +379,7 @@ super.initState();
 
                 // search bar
                 Positioned(
-                  top: 15,
+                  top: 30,
                   left: 5,
                   right: 5,
                   child: AutocompleteSearchBar(
@@ -602,7 +608,7 @@ super.initState();
                     ),
                   ),
 
-                // Sign-out button
+                /*// Sign-out button
                 Positioned(
                   top: 80,
                   right: 10,
@@ -615,28 +621,32 @@ super.initState();
                     onPressed: () => FirebaseAuth.instance.signOut(),
                     child: const Icon(Icons.logout),
                   ),
-                ),
+                ), */
 
-                // Settings (gear)
+                // Settings 
                 Positioned(
-                  top: 120,
-                  right: 5,
-                  child: IconButton(
-                    icon: const Icon(Icons.settings),
+                  top: 90,
+                  right: 16,
+                  child: FloatingActionButton(
+                    heroTag: 'settingsBtn',
+                    mini: true,  
+                    tooltip: 'Settings',
                     onPressed: () {
                       Navigator.push(
                         context,
-                        MaterialPageRoute(
-                            builder: (_) => const SettingsScreen()),
+                        MaterialPageRoute(builder: (_) => const SettingsScreen()),
                       );
                     },
+                    child: const Icon(Icons.settings),
                   ),
                 ),
+
+
 
                 // Search radius slider (shown when speed dial is open)
                 if (_isDialOpen)
                   Positioned(
-                    bottom: 160,
+                    bottom: 150,
                     left: 20,
                     right: 20,
                     child: Container(
@@ -668,13 +678,14 @@ super.initState();
 
                 // Speed dial: nearby search by category
                 Positioned(
-                  bottom: 75,
+                  bottom: 20,
                   left: 20,
                   child: SpeedDial(
                     icon: Icons.place,
                     activeIcon: Icons.close,
                     backgroundColor: Colors.blueAccent,
                     spacing: 12,
+                    shape: RoundedRectangleBorder(borderRadius:BorderRadius.circular(16)),
                     onOpen: () => setState(() => _isDialOpen = true),
                     onClose: () => setState(() => _isDialOpen = false),
                     children: PoiCategory.values.map((cat) {
@@ -731,7 +742,6 @@ super.initState();
                   right: 20,
                   child: FloatingActionButton(
                     heroTag: 'heatToggle',
-                    mini: true,
                     onPressed: () {
                       setState(() =>
                           _heatmap.showHeatmap = !_heatmap.showHeatmap);
@@ -761,27 +771,28 @@ super.initState();
 
                 // Friends
                 Positioned(
-                  bottom: 20,
+                  bottom: 90,
                   left: 20,
-                  child: ElevatedButton(
+                  child: FloatingActionButton(
+                    heroTag: "friendsBtn",
                     onPressed: () {
                       Navigator.push(
                         context,
-                        MaterialPageRoute(
-                            builder: (_) => const FriendScreen()),
+                        MaterialPageRoute(builder: (_) => const FriendScreen()),
                       );
                     },
-                    child: const Text("Friends"),
+                    child: const Icon(Icons.people), // same icon as 'view friends' button
                   ),
                 ),
 
+
                 // Show location-sharing friends
                 Positioned(
-                  bottom: 140,
+                  bottom: 160,
                   left: 20,
                   child: FloatingActionButton(
                     onPressed: _showSharingFriends,
-                    child: const Icon(Icons.people),
+                    child: const Icon(Icons.person_pin_circle),
                   ),
                 ),
               ],
@@ -1212,8 +1223,11 @@ Future<void> _cameraTo(LatLng pos) async {
             title: Text(name),
             subtitle: (lat != null && lng != null)
                 ? Text(
-                    '$vicinity • ${(_calculateDistanceMeters(_currentPosition!, lat, lng) / 1609.34).toStringAsFixed(1)} mi')
+                    '$vicinity • ${(_calculateDistanceMeters(_currentPosition!, lat, lng) / 1609.34).toStringAsFixed(1)} mi',
+                    overflow: TextOverflow.ellipsis,
+                  )
                 : Text(vicinity),
+
             trailing: (lat != null && lng != null)
                 ? IconButton(
                     icon: const Icon(Icons.navigation),
@@ -1805,7 +1819,7 @@ Future<void> _cameraTo(LatLng pos) async {
           Text(address, style: Theme.of(context).textTheme.bodyMedium),
           const SizedBox(height: 6),
           Text(
-            'LatLng: ${pos.latitude.toStringAsFixed(5)}, ${pos.longitude.toStringAsFixed(5)} • \${(distM / 1609.34).toStringAsFixed(1)} mi away',
+            'LatLng: ${pos.latitude.toStringAsFixed(5)}, ${pos.longitude.toStringAsFixed(5)} • ${(distM / 1609.34).toStringAsFixed(1)} mi away',
             style: Theme.of(context)
                 .textTheme
                 .bodySmall
@@ -2027,7 +2041,7 @@ Future<void> _cameraTo(LatLng pos) async {
   }
 
   // Assisted by ChatGPT, up-to-date method for retrieving data from crimeometer.
-  Future<List<CrimeIncident>> _fetchCrimeometerIncidents({
+  /*Future<List<CrimeIncident>> _fetchCrimeometerIncidents({
     required LatLng center,
     required double radiusMeters,
     required int daysAgo,
@@ -2112,6 +2126,102 @@ Future<void> _cameraTo(LatLng pos) async {
     }
     return out;
   }
+*/
+Future<List<CrimeIncident>> _fetchCrimeometerIncidents({
+  required LatLng center,
+  required double radiusMeters,
+  required int daysAgo,
+  int page = 1,
+  int? pageSize,
+  bool forceMock = kForceMockCrimes,
+}) async {
+  // If you want to test mock explicitly:
+  if (forceMock) {
+    return _loadMockCrimes();
+  }
+
+  try {
+    final payload = await _crimeService.fetchCrimeData(
+      latitude: center.latitude,
+      longitude: center.longitude,
+      distanceMiles: radiusMeters / 1609.34, // NOTE: still miles for API
+      daysAgo: daysAgo,
+      page: page,
+      pageSize: pageSize,
+    );
+
+    final raw = _extractIncidentObjects(payload);
+    if (raw.isEmpty) {
+      // Graceful fallback if API returns empty or unexpected
+      debugPrint('Crimeometer returned empty; falling back to mock.');
+      return _loadMockCrimes();
+    }
+
+    final out = <CrimeIncident>[];
+    for (final it in raw) {
+      if (it is! Map<String, dynamic>) continue;
+
+      final lat = _pickDouble(it, ['incident_latitude', 'latitude', 'lat']);
+      final lon = _pickDouble(it, ['incident_longitude', 'longitude', 'lon', 'lng']);
+      if (lat == null || lon == null) continue;
+
+      final offense = _pickString(it, [
+            'incident_offense','offense','incident_type','ucr_offense','nibrs_code'
+          ]) ?? 'Unknown';
+
+      final whenStr = _pickString(it, [
+        'incident_date','incident_datetime','reported_at','date','datetime'
+      ]);
+      DateTime occurredAt;
+      try {
+        occurredAt = whenStr != null ? DateTime.parse(whenStr).toUtc() : DateTime.now().toUtc();
+      } catch (_) {
+        occurredAt = DateTime.now().toUtc();
+      }
+
+      final addr = _pickString(it, ['incident_address','address','formatted_address','block_address']);
+      final id = _pickString(it, [
+            'incident_id','incident_reference','incident_uid','case_number','incident_number','id'
+          ]) ?? '${lat.toStringAsFixed(6)}_${lon.toStringAsFixed(6)}_${occurredAt.millisecondsSinceEpoch}';
+
+      out.add(CrimeIncident(
+        id: id,
+        offense: offense,
+        occurredAt: occurredAt,
+        position: LatLng(lat, lon),
+        address: addr,
+        source: 'crimeometer',
+      ));
+    }
+    return out;
+  } catch (e) {
+    debugPrint('Crimeometer fetch failed: $e — loading mock data.');
+    return _loadMockCrimes();
+  }
+}
+
+
+
+
+Future<List<CrimeIncident>> _loadMockCrimes() async {
+  final s = await rootBundle.loadString('assets/mock_crime_data.json');
+  final data = jsonDecode(s) as Map<String, dynamic>;
+  final inc = (data['incidents'] as List?) ?? const [];
+  return inc.map((it) {
+    final m = it as Map<String, dynamic>;
+    return CrimeIncident(
+      id: (m['incident_id'] ?? '').toString(),
+      offense: (m['incident_offense'] ?? 'Unknown').toString(),
+      occurredAt: DateTime.tryParse((m['incident_date'] ?? '').toString())?.toUtc() ?? DateTime.now().toUtc(),
+      address: m['incident_address'] as String?,
+      position: LatLng(
+        (m['incident_latitude'] as num).toDouble(),
+        (m['incident_longitude'] as num).toDouble(),
+      ),
+      source: 'mock',
+    );
+  }).toList();
+}
 
   /// Grabs incident objects as a list, tries various labels that might denote a new incident
   List<dynamic> _extractIncidentObjects(Map<String, dynamic> payload) {

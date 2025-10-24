@@ -5,6 +5,7 @@ import '../services/encryption_service.dart';
 import '../offline_maps/offline_maps_page.dart';
 import 'package:provider/provider.dart';
 import '../theme_manager.dart'; // Import ThemeManager
+import '../screens/auth_screen.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -226,6 +227,28 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 label: const Text('Save Changes'),
                 onPressed: _saveChanges,
               ),
+
+              const SizedBox(height:24),
+ElevatedButton.icon(
+  icon: const Icon(Icons.logout),
+  label: const Text('Log Out'),
+  style: ElevatedButton.styleFrom(
+    backgroundColor: Colors.white,
+    foregroundColor: Colors.black,
+    elevation: 2,
+  ),
+  onPressed: () async {
+    await FirebaseAuth.instance.signOut();
+
+    if (context.mounted) {
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(builder: (_) => const AuthScreen()),
+      );
+    }
+  },
+),
+              
               const SizedBox(height: 24),
               ElevatedButton.icon(
                 icon: const Icon(Icons.delete_forever),
