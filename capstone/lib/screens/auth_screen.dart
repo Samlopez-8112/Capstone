@@ -57,10 +57,10 @@ class _AuthScreenState extends State<AuthScreen>{
 
         try {
           print("📧 Writing new mail doc to Firestore...");
-          final uid = userCred.user!.uid;
-          final encryptedUid = await EncryptionService.encrypt(uid);
+          //final uid = userCred.user!.uid;
+          //final encryptedUid = await EncryptionService.encrypt(uid);
 
-          final lockUrl = 'https://us-central1-capstoneproject-sf2025.cloudfunctions.net/lockAccount?uid=$encryptedUid';
+          //final lockUrl = 'https://us-central1-capstoneproject-sf2025.cloudfunctions.net/lockAccount?uid=$encryptedUid';
 
           await FirebaseFirestore.instance.collection('mail').add({
             'to': email,
@@ -72,7 +72,7 @@ class _AuthScreenState extends State<AuthScreen>{
 <p>Device ID: $deviceId<br/>
 Time: ${DateTime.now().toUtc()}</p>
 
-<p><a href="$lockUrl">Click here to lock your account</a> if this wasn't you.</p>
+<p>If this wasn't you, please contact support at bypassr.support@gmail.com</p>
 
 <p>Stay safe,<br/>Bypassr Security Team</p>
 '''
@@ -145,9 +145,9 @@ Time: ${DateTime.now().toUtc()}</p>
 
     // ✅ Optionally send “Welcome / new device registered” email
     try {
-      final encryptedUid = await EncryptionService.encrypt(uid);
-      final lockUrl =
-          'https://us-central1-capstoneproject-sf2025.cloudfunctions.net/lockAccount?uid=$encryptedUid';
+      //final encryptedUid = await EncryptionService.encrypt(uid);
+      //final lockUrl =
+          //'https://us-central1-capstoneproject-sf2025.cloudfunctions.net/lockAccount?uid=$encryptedUid';
 
       await FirebaseFirestore.instance.collection('mail').add({
         'to': email,
@@ -159,7 +159,7 @@ Time: ${DateTime.now().toUtc()}</p>
 <p>Device ID: $rawDeviceId<br/>
 Time: ${DateTime.now().toUtc()}</p>
 
-<p>If this wasn't you, you can <a href="$lockUrl">lock your account here</a>.</p>
+<p>If this wasn't you, you can contact support at bypassr.support@gmail.com </a>.</p>
 
 <p>Stay safe,<br/>Bypassr Security Team</p>
 '''
@@ -235,18 +235,6 @@ Time: ${DateTime.now().toUtc()}</p>
                 onSaved: (val) => password = val!,
                 validator: (val) => val!.length < 6 ? '6+ chars' : null,
               ),
-              /*TextFormField(
-                key: const ValueKey('phone'),
-                decoration: const InputDecoration(labelText: 'Phone Number (+1234567890)'),
-                keyboardType: TextInputType.phone,
-                onSaved: (val) => phone = val!.trim(),
-                validator: (val) {
-                  if (val == null || val.isEmpty || !val.startsWith('+')) {
-                    return 'Enter valid phone number with +';
-                  }
-                  return null;
-                },
-              ),*/
               const SizedBox(height: 12),
               ElevatedButton(
                 onPressed: submit,
@@ -275,66 +263,5 @@ Time: ${DateTime.now().toUtc()}</p>
     }
     return 'unknown_device';
   }
-    /*void _linkPhoneNumberMfa(String phoneNumber) async {
-    try {
-      await FirebaseAuth.instance.verifyPhoneNumber(
-        phoneNumber: phoneNumber,
-          verificationCompleted: (PhoneAuthCredential credential) async {
-            await FirebaseAuth.instance.currentUser?.linkWithCredential(credential);
-            print('✅ Phone linked for MFA (auto)');
-          },
-          verificationFailed: (FirebaseAuthException e) {
-            print('❌ Phone verification failed: ${e.message}');
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(content: Text('Phone verification failed: ${e.message}')),
-            );
-          },
-          codeSent: (verificationId, resendToken) async {
-            final smsCode = await _askUserForSmsCode();
-            if (smsCode == null) return;
-
-            final credential = PhoneAuthProvider.credential(
-              verificationId: verificationId,
-              smsCode: smsCode,
-            );
-
-            await FirebaseAuth.instance.currentUser?.linkWithCredential(credential);
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('Phone linked as MFA second factor!')),
-              );
-          },
-            codeAutoRetrievalTimeout: (_) {},
-      );
-    } catch (e) {
-        print('⚠️ MFA linking error: $e');
-      }
-    }
-
-    Future<String?> _askUserForSmsCode() async {
-      String? code;
-        await showDialog(
-          context: context,
-          builder: (ctx) {
-          final codeController = TextEditingController();
-            return AlertDialog(
-                title: const Text('Enter SMS Code'),
-                content: TextField(
-                  controller: codeController,
-                  keyboardType: TextInputType.number,
-                ),
-              actions: [
-                TextButton(
-                  onPressed: () {
-                    code = codeController.text.trim();
-                    Navigator.of(ctx).pop();
-                  },
-                  child: const Text('Submit'),
-                )
-              ],
-            );
-          },
-        );
-        return code;
-    }*/
 }
 
