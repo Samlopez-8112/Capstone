@@ -39,6 +39,7 @@ import '../utils/account_lock_guard.dart';
 import 'package:flutter/services.dart'; 
 import 'package:provider/provider.dart';
 import '../theme_manager.dart'; // theme manager
+import '../services/encryption_service.dart';
 // Toggle this to force mock locally (still keeps auto-fallback on error):
 const bool kForceMockCrimes = false;
 
@@ -1377,83 +1378,115 @@ Future<void> _cameraTo(LatLng pos) async {
   }
 
   Future<void> _showSharingFriends() async {
-    final user = FirebaseAuth.instance.currentUser;
-    if (user == null) return;
+  final user = FirebaseAuth.instance.currentUser;
+  if (user == null) return;
 
-    // find all users who are sharing with current user
-    final allUsers = await FirebaseFirestore.instance.collection('users').get();
-    final sharedWithMe = <DocumentSnapshot>[];
+  final allUsers = await FirebaseFirestore.instance.collection('users').get();
+  final sharedWithMe = <DocumentSnapshot>[];
 
-    for (final doc in allUsers.docs) {
-      if (doc.id == user.uid) continue;
-      final sharedDoc = await FirebaseFirestore.instance
-          .collection('users')
-          .doc(doc.id)
-          .collection('shared_locations')
-          .doc(user.uid)
-          .get();
-      if (sharedDoc.exists && sharedDoc['isSharing'] == true) {
-        sharedWithMe.add(doc);
-      }
+  for (final doc in allUsers.docs) {
+    if (doc.id == user.uid) continue;
+
+    final sharedDoc = await FirebaseFirestore.instance
+        .collection('users')
+        .doc(doc.id)
+        .collection('shared_locations')
+        .doc(user.uid)
+        .get();
+
+    if (sharedDoc.exists && sharedDoc['isSharing'] == true) {
+      sharedWithMe.add(doc);
     }
-
-    if (sharedWithMe.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("No friends are sharing with you.")),
-      );
-      return;
-    }
-
-    showModalBottomSheet(
-      context: context,
-      builder: (_) => ListView(
-        children: sharedWithMe.map((doc) {
-          final displayName = doc['displayName'] ?? doc.id;
-          return ListTile(
-            leading: const Icon(Icons.person_pin_circle),
-            title: Text(displayName),
-            onTap: () async {
-              Navigator.pop(context);
-              final loc = await FirebaseFirestore.instance
-                  .collection('users')
-                  .doc(doc.id)
-                  .collection('location')
-                  .doc('current')
-                  .get();
-
-              if (!loc.exists) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(content: Text("$displayName has no location data.")),
-                );
-                return;
-              }
-
-              final lat = (loc['lat'] as num).toDouble();
-              final lng = (loc['lng'] as num).toDouble();
-              final pos = LatLng(lat, lng);
-              _cameraTo(pos);
-
-              final id = MarkerId("friend_${doc.id}");
-              setState(() {
-                markers[id] = Marker(
-                  markerId: id,
-                  position: pos,
-                  infoWindow: InfoWindow(title: displayName),
-                  icon: BitmapDescriptor.defaultMarkerWithHue(
-                      BitmapDescriptor.hueMagenta),
-                );
-              });
-
-              Future.delayed(const Duration(seconds: 5), () {
-                if (!mounted) return;
-                setState(() => markers.remove(id));
-              });
-            },
-          );
-        }).toList(),
-      ),
-    );
   }
+
+  if (sharedWithMe.isEmpty) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text("No friends are sharing with you.")),
+    );
+    return;
+  }
+
+  showModalBottomSheet(
+    context: context,
+    builder: (_) => FutureBuilder<List<Map<String, dynamic>>>(
+      future: Future.wait(sharedWithMe.map((doc) async {
+        final data = doc.data() as Map<String, dynamic>?;
+
+        String name = 'Unnamed';
+
+        if (data != null) {
+          if (data.containsKey('displayName')) {
+            name = data['displayName'];
+          } else if (data.containsKey('full_name')) {
+            try {
+              name = await EncryptionService.decrypt(data['full_name']);
+            } catch (e) {
+              print('Error decrypting full_name for ${doc.id}: $e');
+            }
+          }
+        }
+
+        return {'doc': doc, 'name': name};
+      })),
+      builder: (context, snapshot) {
+        if (!snapshot.hasData) {
+          return const Center(child: CircularProgressIndicator());
+        }
+
+        final entries = snapshot.data!;
+        return ListView(
+          children: entries.map((entry) {
+            final doc = entry['doc'] as DocumentSnapshot;
+            final displayName = entry['name'] as String;
+
+            return ListTile(
+              leading: const Icon(Icons.person_pin_circle),
+              title: Text(displayName),
+              onTap: () async {
+                Navigator.pop(context);
+                final loc = await FirebaseFirestore.instance
+                    .collection('users')
+                    .doc(doc.id)
+                    .collection('location')
+                    .doc('current')
+                    .get();
+
+                if (!loc.exists) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text("$displayName has no location data.")),
+                  );
+                  return;
+                }
+
+                final lat = (loc['lat'] as num).toDouble();
+                final lng = (loc['lng'] as num).toDouble();
+                final pos = LatLng(lat, lng);
+                _cameraTo(pos);
+
+                final id = MarkerId("friend_${doc.id}");
+                setState(() {
+                  markers[id] = Marker(
+                    markerId: id,
+                    position: pos,
+                    infoWindow: InfoWindow(title: displayName),
+                    icon: BitmapDescriptor.defaultMarkerWithHue(
+                        BitmapDescriptor.hueMagenta),
+                  );
+                });
+
+                Future.delayed(const Duration(seconds: 5), () {
+                  if (!mounted) return;
+                  setState(() => markers.remove(id));
+                });
+              },
+            );
+          }).toList(),
+        );
+      },
+    ),
+  );
+}
+
 
   // Remove all markers whose MarkerId.value have "crime_" prefix
   void _clearCrimeMarkers() {

@@ -6,6 +6,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:location/location.dart';
 import '../utils/account_lock_guard.dart';
+import '../services/encryption_service.dart';
 
 class FriendScreen extends StatefulWidget {
   const FriendScreen({super.key});
@@ -306,7 +307,10 @@ class _FriendScreenState extends State<FriendScreen> {
                           if (!userSnapshot.hasData) {
                             return const ListTile(title: Text('Loading...'));
                           }
+
                           final friendData = userSnapshot.data!;
+                          final data = friendData.data() as Map<String, dynamic>?;
+
                           return FutureBuilder<DocumentSnapshot>(
                             future: FirebaseFirestore.instance
                                 .collection('users')
@@ -323,50 +327,66 @@ class _FriendScreenState extends State<FriendScreen> {
                               bool isSharing = false;
 
                               if (shareDoc.exists) {
-                                final data = shareDoc.data();
-                                if (data is Map<String, dynamic> && data.containsKey('isSharing')) {
-                                  isSharing = data['isSharing'] == true;
+                                final shareData = shareDoc.data();
+                                if (shareData is Map<String, dynamic> && shareData.containsKey('isSharing')) {
+                                  isSharing = shareData['isSharing'] == true;
                                 }
                               }
 
-                              return SwitchListTile(
-                                title: Text(friendData.get('displayName') ?? 'No Display Name'),
-                                value: isSharing,
-                                onChanged: (value) async {
-                                  final ref = FirebaseFirestore.instance
-                                      .collection('users')
-                                      .doc(currentUid)
-                                      .collection('shared_locations')
-                                      .doc(friendIds[index]);
-
-                                  if (value) {
-                                    await ref.set({
-                                      'isSharing': true,
-                                      'timestamp': FieldValue.serverTimestamp(),
-                                    });
-
-                                    final loc = await Location().getLocation();
-                                    await FirebaseFirestore.instance
-                                        .collection('users')
-                                        .doc(currentUid)
-                                        .collection('location')
-                                        .doc('current')
-                                        .set({
-                                      'lat': loc.latitude,
-                                      'lng': loc.longitude,
-                                      'timestamp': FieldValue.serverTimestamp(),
-                                    });
-                                  } else {
-                                    await ref.delete();
-                                    await FirebaseFirestore.instance
-                                        .collection('users')
-                                        .doc(currentUid)
-                                        .collection('location')
-                                        .doc('current')
-                                        .delete();
+                              return FutureBuilder<String>(
+                                future: () async {
+                                  try {
+                                    if (data != null && data.containsKey('full_name')) {
+                                      return await EncryptionService.decrypt(data['full_name']);
+                                    }
+                                  } catch (e) {
+                                    print("🔐 Decryption failed: \$e");
                                   }
+                                  return 'Unnamed';
+                                }(),
+                                builder: (context, nameSnapshot) {
+                                  final name = nameSnapshot.data ?? 'Unnamed';
 
-                                  if (mounted) setState(() {});
+                                  return SwitchListTile(
+                                    title: Text(name),
+                                    value: isSharing,
+                                    onChanged: (value) async {
+                                      final ref = FirebaseFirestore.instance
+                                          .collection('users')
+                                          .doc(currentUid)
+                                          .collection('shared_locations')
+                                          .doc(friendIds[index]);
+
+                                      if (value) {
+                                        await ref.set({
+                                          'isSharing': true,
+                                          'timestamp': FieldValue.serverTimestamp(),
+                                        });
+
+                                        final loc = await Location().getLocation();
+                                        await FirebaseFirestore.instance
+                                            .collection('users')
+                                            .doc(currentUid)
+                                            .collection('location')
+                                            .doc('current')
+                                            .set({
+                                          'lat': loc.latitude,
+                                          'lng': loc.longitude,
+                                          'timestamp': FieldValue.serverTimestamp(),
+                                        });
+                                      } else {
+                                        await ref.delete();
+                                        await FirebaseFirestore.instance
+                                            .collection('users')
+                                            .doc(currentUid)
+                                            .collection('location')
+                                            .doc('current')
+                                            .delete();
+                                      }
+
+                                      if (mounted) setState(() {});
+                                    },
+                                  );
                                 },
                               );
                             },
