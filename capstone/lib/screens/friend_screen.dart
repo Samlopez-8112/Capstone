@@ -176,109 +176,116 @@ class _FriendScreenState extends State<FriendScreen> {
             const SizedBox(height: 30),
             const Text('Incoming Friend Requests', style: TextStyle(fontSize: 18)),
             const SizedBox(height: 10),
-            Expanded(
-              child: StreamBuilder<List<DocumentSnapshot>>(
-                stream: getIncomingRequestsStream(),
-                builder: (context, snapshot) {
-                  if (!snapshot.hasData) {
-                    return const Center(child: CircularProgressIndicator());
-                  }
+            Expanded( 
+  child: StreamBuilder<List<DocumentSnapshot>>( 
+    stream: getIncomingRequestsStream(), 
+    builder: (context, snapshot) {
+      if (!snapshot.hasData) {
+        return const Center(child: CircularProgressIndicator());
+      }
 
-                  final requests = snapshot.data!;
-                  if (requests.isEmpty) {
-                    return const Center(child: Text("No pending requests"));
-                  }
+      final requests = snapshot.data!;
+      if (requests.isEmpty) {
+        return const Center(child: Text("No pending requests"));
+      }
 
-                  return ListView.builder(
-                    itemCount: requests.length,
-                    itemBuilder: (context, index) {
-                      final doc = requests[index];
-                      final senderUid = doc['userA'];
+      return ListView.builder(
+        itemCount: requests.length,
+        itemBuilder: (context, index) {
+          final doc = requests[index];
+          final senderUid = doc['userA'];
 
-                      return FutureBuilder<DocumentSnapshot>(
-                        future: FirebaseFirestore.instance.collection('users').doc(senderUid).get(),
-                        builder: (context, userSnapshot) {
-                          if (!userSnapshot.hasData) {
-                            return const ListTile(title: Text("Loading..."));
-                          }
+          return FutureBuilder<DocumentSnapshot>(
+            future: FirebaseFirestore.instance.collection('users').doc(senderUid).get(),
+            builder: (context, userSnapshot) {
+              if (!userSnapshot.hasData) {
+                return const ListTile(title: Text("Loading..."));
+              }
 
-                          if (!userSnapshot.data!.exists) {
-                            return ListTile(
-                              title: Text("User not found"),
-                              subtitle: Text(senderUid),
+              if (!userSnapshot.data!.exists) {
+                return ListTile(
+                  title: Text("User not found"),
+                  subtitle: Text(senderUid),
+                );
+              }
+              final senderData = userSnapshot.data!;
+              final data = senderData.data() as Map<String, dynamic>?;
+
+              return FutureBuilder<String>(
+                future: EncryptionService.decrypt(data?['full_name'] ?? ''),
+                builder: (context, decryptSnapshot) {
+                  final senderName = decryptSnapshot.data ?? 'Unknown';
+
+                  return ListTile(
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    title: Text(
+                      senderName,
+                      overflow: TextOverflow.ellipsis,
+                      softWrap: false,
+                      style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w500),
+                    ),
+                    trailing: Wrap(
+                      spacing: 4,
+                      children: [
+                        IconButton(
+                          tooltip: 'Accept',
+                          icon: const Icon(Icons.check, color: Colors.green),
+                          onPressed: () async {
+                            await FirebaseFirestore.instance
+                                .collection('friendships')
+                                .doc(doc.id)
+                                .update({'status': 'accepted'});
+                          },
+                        ),
+                        IconButton(
+                          tooltip: 'Reject',
+                          icon: const Icon(Icons.close, color: Colors.red),
+                          onPressed: () async {
+                            await FirebaseFirestore.instance
+                                .collection('friendships')
+                                .doc(doc.id)
+                                .delete();
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(content: Text('Friend request rejected')),
                             );
-                          }
-                          final senderData = userSnapshot.data!;
-                          final senderName = senderData.get('displayName') ?? 'Unknown';
-                          return ListTile(
-  contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-  title: Text(
-    senderName.toString(),
-    overflow: TextOverflow.ellipsis,
-    softWrap: false,
-    style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w500),
-  ),
-  trailing: Wrap(
-    spacing: 4,
-    children: [
-      IconButton(
-        tooltip: 'Accept',
-        icon: const Icon(Icons.check, color: Colors.green),
-        onPressed: () async {
-          await FirebaseFirestore.instance
-              .collection('friendships')
-              .doc(doc.id)
-              .update({'status': 'accepted'});
-        },
-      ),
-      IconButton(
-        tooltip: 'Reject',
-        icon: const Icon(Icons.close, color: Colors.red),
-        onPressed: () async {
-          await FirebaseFirestore.instance
-              .collection('friendships')
-              .doc(doc.id)
-              .delete();
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Friend request rejected')),
-          );
-        },
-      ),
-      IconButton(
-        tooltip: 'Block',
-        icon:  Icon(Icons.block, 
-        color: Theme.of(context).colorScheme.error.withOpacity(0.7),
-        ),
-        onPressed: () async {
-          await FirebaseFirestore.instance
-              .collection('friendships')
-              .doc(doc.id)
-              .delete();
-          await FirebaseFirestore.instance
-              .collection('blocked_users')
-              .add({
-            'blocker': currentUid,
-            'blocked': senderUid,
-            'timestamp': FieldValue.serverTimestamp(),
-          });
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('User blocked and request denied')),
-          );
-        },
-      ),
-    ],
-  ),
-);
-
-                          
-
-                        },
-                      );
-                    },
+                          },
+                        ),
+                        IconButton(
+                          tooltip: 'Block',
+                          icon: Icon(
+                            Icons.block,
+                            color: Theme.of(context).colorScheme.error.withOpacity(0.7),
+                          ),
+                          onPressed: () async {
+                            await FirebaseFirestore.instance
+                                .collection('friendships')
+                                .doc(doc.id)
+                                .delete();
+                            await FirebaseFirestore.instance
+                                .collection('blocked_users')
+                                .add({
+                              'blocker': currentUid,
+                              'blocked': senderUid,
+                              'timestamp': FieldValue.serverTimestamp(),
+                            });
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(content: Text('User blocked and request denied')),
+                            );
+                          },
+                        ),
+                      ],
+                    ),
                   );
                 },
-              ),
-            ),
+              );
+            },
+          );
+        },
+      );
+    },
+  ),
+),
+
             const SizedBox(height: 20),
             const Text('Your Friends', style: TextStyle(fontSize: 18)),
             const SizedBox(height: 10),
