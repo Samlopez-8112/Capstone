@@ -26,6 +26,7 @@ class _FriendScreenState extends State<FriendScreen> {
    //Run the account lock check after first frame
    WidgetsBinding.instance.addPostFrameCallback((_) {
     AccountLockGuard.check(context);
+    updateDailyFriendCode();
    });
   }
 
@@ -39,33 +40,36 @@ class _FriendScreenState extends State<FriendScreen> {
   }
 
   void searchUserById() async {
-    final searchId = _searchController.text.trim();
+  final searchCode = _searchController.text.trim();
 
-    print("🔍 Searching for UID: $searchId");
+  print("🔍 Searching for Friend Code: $searchCode");
 
-    try {
-      final doc = await FirebaseFirestore.instance
-          .collection('users')
-          .doc(searchId)
-          .get();
+  try {
+    final query = await FirebaseFirestore.instance
+        .collection('users')
+        .where('dailyFriendCode', isEqualTo: searchCode)
+        .limit(1)
+        .get();
 
-      print("Doc exists: \${doc.exists}");
-      print("Data: \${doc.data()}");
-
-      if (!doc.exists) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text("No user found with that UID.")),
-        );
-        setState(() => _foundUser = null);
-        return;
-      }
-
-      setState(() => _foundUser = doc);
-    } catch (e) {
-      print('Error: \$e');
+    if (query.docs.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("No user found with that friend code.")),
+      );
       setState(() => _foundUser = null);
+      return;
     }
+
+    final doc = query.docs.first;
+    print("Doc exists: ${doc.exists}");
+    print("Data: ${doc.data()}");
+
+    setState(() => _foundUser = doc);
+  } catch (e) {
+    print('Error: $e');
+    setState(() => _foundUser = null);
   }
+}
+
 
   Future<void> sendFriendRequest(String targetUid) async {
     final currentUid = _auth.currentUser!.uid;
@@ -143,22 +147,31 @@ class _FriendScreenState extends State<FriendScreen> {
             TextField(
               controller: _searchController,
               decoration: InputDecoration(
-                labelText: 'Search by Account ID (UID)',
+                labelText: 'Search by Friend Code',
                 suffixIcon: IconButton(
                   icon: const Icon(Icons.search),
-                  onPressed: searchUserById,
+                  onPressed: searchByFriendCode,
                 ),
               ),
             ),
             const SizedBox(height: 20),
-            if (_foundUser != null && _foundUser!.id != currentUid)
-              ListTile(
-                title: Text(_foundUser!.get('displayName') ?? 'No Name'),
-                trailing: ElevatedButton(
-                  onPressed: () => sendFriendRequest(_foundUser!.id),
-                  child: const Text('Add Friend'),
-                ),
-              ),
+           _foundUser != null && _foundUser!.id != currentUid
+  ? ListTile(
+      title: Text(
+    ((_foundUser!.data() as Map<String, dynamic>?)?['displayName'] ?? 'Unnamed')
+        .toString(),
+    overflow: TextOverflow.ellipsis,
+    softWrap: false,
+    style: const TextStyle(fontSize: 16),
+  ),
+  trailing: ElevatedButton(
+    onPressed: () => sendFriendRequest(_foundUser!.id),
+    child: const Text('Add Friend'),
+  ),
+    )
+  : const SizedBox.shrink(),
+
+
             const SizedBox(height: 30),
             const Text('Incoming Friend Requests', style: TextStyle(fontSize: 18)),
             const SizedBox(height: 10),
@@ -196,60 +209,68 @@ class _FriendScreenState extends State<FriendScreen> {
                           }
                           final senderData = userSnapshot.data!;
                           final senderName = senderData.get('displayName') ?? 'Unknown';
-
                           return ListTile(
-                            title: Text(senderName),
-                            subtitle: Text(senderUid),
-                            trailing: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                ElevatedButton(
-                                  onPressed: () async {
-                                    await FirebaseFirestore.instance
-                                        .collection('friendships')
-                                        .doc(doc.id)
-                                        .update({'status': 'accepted'});
-                                  },
-                                  child: const Text("Accept"),
-                                ),
-                                const SizedBox(width: 8),
-                                ElevatedButton(
-                                  style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
-                                  onPressed: () async {
-                                    await FirebaseFirestore.instance
-                                        .collection('friendships')
-                                        .doc(doc.id)
-                                        .delete();
-                                    ScaffoldMessenger.of(context).showSnackBar(
-                                      const SnackBar(content: Text('Friend request rejected')),
-                                    );
-                                  },
-                                  child: const Text("Reject"),
-                                ),
-                                const SizedBox(width: 8),
-                                ElevatedButton(
-                                  style: ElevatedButton.styleFrom(backgroundColor: Colors.black87),
-                                  onPressed: () async {
-                                    await FirebaseFirestore.instance
-                                        .collection('friendships')
-                                        .doc(doc.id)
-                                        .delete();
-                                    await FirebaseFirestore.instance
-                                        .collection('blocked_users')
-                                        .add({
-                                      'blocker': currentUid,
-                                      'blocked': senderUid,
-                                      'timestamp': FieldValue.serverTimestamp(),
-                                    });
-                                    ScaffoldMessenger.of(context).showSnackBar(
-                                      const SnackBar(content: Text('User blocked and request denied')),
-                                    );
-                                  },
-                                  child: const Text("Block"),
-                                ),
-                              ],
-                            ),
-                          );
+  contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+  title: Text(
+    senderName.toString(),
+    overflow: TextOverflow.ellipsis,
+    softWrap: false,
+    style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w500),
+  ),
+  trailing: Wrap(
+    spacing: 4,
+    children: [
+      IconButton(
+        tooltip: 'Accept',
+        icon: const Icon(Icons.check, color: Colors.green),
+        onPressed: () async {
+          await FirebaseFirestore.instance
+              .collection('friendships')
+              .doc(doc.id)
+              .update({'status': 'accepted'});
+        },
+      ),
+      IconButton(
+        tooltip: 'Reject',
+        icon: const Icon(Icons.close, color: Colors.red),
+        onPressed: () async {
+          await FirebaseFirestore.instance
+              .collection('friendships')
+              .doc(doc.id)
+              .delete();
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Friend request rejected')),
+          );
+        },
+      ),
+      IconButton(
+        tooltip: 'Block',
+        icon:  Icon(Icons.block, 
+        color: Theme.of(context).colorScheme.error.withOpacity(0.7),
+        ),
+        onPressed: () async {
+          await FirebaseFirestore.instance
+              .collection('friendships')
+              .doc(doc.id)
+              .delete();
+          await FirebaseFirestore.instance
+              .collection('blocked_users')
+              .add({
+            'blocker': currentUid,
+            'blocked': senderUid,
+            'timestamp': FieldValue.serverTimestamp(),
+          });
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('User blocked and request denied')),
+          );
+        },
+      ),
+    ],
+  ),
+);
+
+                          
+
                         },
                       );
                     },
@@ -310,7 +331,6 @@ class _FriendScreenState extends State<FriendScreen> {
 
                               return SwitchListTile(
                                 title: Text(friendData.get('displayName') ?? 'No Display Name'),
-                                subtitle: Text(friendIds[index]),
                                 value: isSharing,
                                 onChanged: (value) async {
                                   final ref = FirebaseFirestore.instance
@@ -363,4 +383,43 @@ class _FriendScreenState extends State<FriendScreen> {
       ),
     );
   }
+  // 1. Add method
+Future<void> updateDailyFriendCode() async {
+  final uid = _auth.currentUser!.uid;
+  final code = generateDailyFriendCode(uid);
+  print('Updating friend code for $uid → $code');
+  await FirebaseFirestore.instance.collection('users').doc(uid).update({
+    'dailyFriendCode': code,
+    'codeGeneratedAt': FieldValue.serverTimestamp(),
+  });
 }
+
+// 3. Update your search function
+void searchByFriendCode() async {
+  final searchCode = _searchController.text.trim();
+  print('🔍 Searching for Friend Code: $searchCode');
+  try {
+    final query = await FirebaseFirestore.instance
+      .collection('users')
+      .where('dailyFriendCode', isEqualTo: searchCode)
+      .limit(1)
+      .get();
+
+    if (query.docs.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("No user found with that friend code.")),
+      );
+      setState(() => _foundUser = null);
+      return;
+    }
+    final doc = query.docs.first;
+    print('Found doc id: ${doc.id}, data: ${doc.data()}');
+    setState(() => _foundUser = doc);
+  } catch (e) {
+    print('Error searching: $e');
+    setState(() => _foundUser = null);
+  }
+}
+
+}
+
