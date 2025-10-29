@@ -160,7 +160,7 @@ class _MapPageState extends State<MapPage> with WidgetsBindingObserver{
 
   @override
   void initState() {
-    
+    _heatmap.showHeatmap = false;
     _loadCrimeMarkerIcons();
 super.initState();
     _maybeOpenOfflineIfNoInternet(); // check connectivity and open offline map if none
