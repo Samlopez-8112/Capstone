@@ -1,68 +1,804 @@
 {
   "incidents": [
-    {"incident_id":"mock-001","incident_offense":"Burglary/Breaking & Entering","incident_date":"2025-10-24T14:05:00Z","incident_address":"1900 Pacific Ave, Dallas, TX","incident_latitude":32.77680,"incident_longitude":-96.79705},
-    {"incident_id":"mock-002","incident_offense":"Robbery","incident_date":"2025-10-24T14:07:00Z","incident_address":"1910 Pacific Ave, Dallas, TX","incident_latitude":32.77690,"incident_longitude":-96.79695},
-    {"incident_id":"mock-003","incident_offense":"Assault","incident_date":"2025-10-24T14:09:00Z","incident_address":"1920 Pacific Ave, Dallas, TX","incident_latitude":32.77670,"incident_longitude":-96.79712},
-
-    {"incident_id":"mock-004","incident_offense":"Aggravated Assault","incident_date":"2025-10-24T10:01:00Z","incident_address":"3220 N Harwood St, Dallas, TX","incident_latitude":32.7941,"incident_longitude":-96.8089},
-    {"incident_id":"mock-005","incident_offense":"Motor Vehicle Theft","incident_date":"2025-10-24T10:21:00Z","incident_address":"2500 Victory Ave, Dallas, TX","incident_latitude":32.7902,"incident_longitude":-96.8108},
-    {"incident_id":"mock-006","incident_offense":"Theft From Motor Vehicle","incident_date":"2025-10-24T11:05:00Z","incident_address":"2021 McKinney Ave, Dallas, TX","incident_latitude":32.7949,"incident_longitude":-96.8063},
-    {"incident_id":"mock-007","incident_offense":"Destruction/Damage/Vandalism","incident_date":"2025-10-24T12:44:00Z","incident_address":"1500 Turtle Creek Blvd, Dallas, TX","incident_latitude":32.8040,"incident_longitude":-96.8127},
-    {"incident_id":"mock-008","incident_offense":"Stolen Property Offenses","incident_date":"2025-10-24T13:18:00Z","incident_address":"2400 N Field St, Dallas, TX","incident_latitude":32.7917,"incident_longitude":-96.8069},
-
-    {"incident_id":"mock-009","incident_offense":"Robbery","incident_date":"2025-10-24T02:31:00Z","incident_address":"350 Continental Ave, Dallas, TX","incident_latitude":32.7786,"incident_longitude":-96.8211},
-    {"incident_id":"mock-010","incident_offense":"Drug Possesion","incident_date":"2025-10-24T03:20:00Z","incident_address":"3011 Gulden Ln, Dallas, TX","incident_latitude":32.7789,"incident_longitude":-96.8302},
-
-    {"incident_id":"mock-011","incident_offense":"Theft of Motor Vehicle Parts","incident_date":"2025-10-24T07:10:00Z","incident_address":"5300 Lemmon Ave, Dallas, TX","incident_latitude":32.8246,"incident_longitude":-96.8217},
-    {"incident_id":"mock-012","incident_offense":"Counterfeiting/Forgery","incident_date":"2025-10-24T08:02:00Z","incident_address":"4123 Cedar Springs Rd, Dallas, TX","incident_latitude":32.8139,"incident_longitude":-96.8161},
-    {"incident_id":"mock-013","incident_offense":"Credit Card Fraud","incident_date":"2025-10-24T08:33:00Z","incident_address":"4515 Lemmon Ave, Dallas, TX","incident_latitude":32.8200,"incident_longitude":-96.8140},
-    {"incident_id":"mock-014","incident_offense":"Embezzlement","incident_date":"2025-10-24T09:10:00Z","incident_address":"4100 Maple Ave, Dallas, TX","incident_latitude":32.8087,"incident_longitude":-96.8281},
-
-    {"incident_id":"mock-015","incident_offense":"Identity Theft","incident_date":"2025-10-24T09:40:00Z","incident_address":"8687 N Central Expy, Dallas, TX","incident_latitude":32.8663,"incident_longitude":-96.7706},
-    {"incident_id":"mock-016","incident_offense":"Credit Card Fraud","incident_date":"2025-10-24T09:55:00Z","incident_address":"8687 N Central Expy, Dallas, TX","incident_latitude":32.8654,"incident_longitude":-96.7719},
-    {"incident_id":"mock-017","incident_offense":"Impersonation","incident_date":"2025-10-24T10:35:00Z","incident_address":"Mockingbird Station, Dallas, TX","incident_latitude":32.8384,"incident_longitude":-96.7703},
-
-    {"incident_id":"mock-020","incident_offense":"Kidnapping/Abduction","incident_date":"2025-10-24T12:05:00Z","incident_address":"Fair Park, Dallas, TX","incident_latitude":32.7804,"incident_longitude":-96.7607},
-    {"incident_id":"mock-021","incident_offense":"Robbery","incident_date":"2025-10-24T12:20:00Z","incident_address":"3809 Grand Ave, Dallas, TX","incident_latitude":32.7766,"incident_longitude":-96.7574},
-    {"incident_id":"mock-022","incident_offense":"Burglary","incident_date":"2025-10-24T12:50:00Z","incident_address":"3600 Parry Ave, Dallas, TX","incident_latitude":32.7810,"incident_longitude":-96.7655},
-    {"incident_id":"mock-023","incident_offense":"Drug/Narcotic Violations","incident_date":"2025-10-24T13:05:00Z","incident_address":"3700 Parry Ave, Dallas, TX","incident_latitude":32.7793,"incident_longitude":-96.7630},
-
-    {"incident_id":"mock-024","incident_offense":"Drug/Narcotic Violations","incident_date":"2025-10-24T14:10:00Z","incident_address":"Deep Ellum, Dallas, TX","incident_latitude":32.7832,"incident_longitude":-96.7850},
-    {"incident_id":"mock-025","incident_offense":"Drug/Narcotic Violations","incident_date":"2025-10-24T14:25:00Z","incident_address":"Deep Ellum, Dallas, TX","incident_latitude":32.7839,"incident_longitude":-96.7822},
-    {"incident_id":"mock-026","incident_offense":"Trespass of Real Property","incident_date":"2025-10-24T14:40:00Z","incident_address":"2700 Canton St, Dallas, TX","incident_latitude":32.7821,"incident_longitude":-96.7868},
-    {"incident_id":"mock-027","incident_offense":"Trespass of Real Property","incident_date":"2025-10-24T14:55:00Z","incident_address":"2600 Main St, Dallas, TX","incident_latitude":32.7827,"incident_longitude":-96.7891},
-
-    {"incident_id":"mock-028","incident_offense":"Extortion/Blackmail","incident_date":"2025-10-24T15:05:00Z","incident_address":"AT&T Discovery District, Dallas, TX","incident_latitude":32.7788,"incident_longitude":-96.7979},
-    {"incident_id":"mock-029","incident_offense":"Stolen Property Offenses","incident_date":"2025-10-24T15:20:00Z","incident_address":"West End Historic District, Dallas, TX","incident_latitude":32.7805,"incident_longitude":-96.8066},
-
-    {"incident_id":"mock-030","incident_offense":"Trespass of Real Property","incident_date":"2025-10-24T15:35:00Z","incident_address":"Design District, Dallas, TX","incident_latitude":32.8049,"incident_longitude":-96.8289},
-    {"incident_id":"mock-031","incident_offense":"Disorderly Conduct","incident_date":"2025-10-24T16:05:00Z","incident_address":"Trinity Groves, Dallas, TX","incident_latitude":32.7782,"incident_longitude":-96.8272},
-    {"incident_id":"mock-032","incident_offense":"Curfew/Loitering/Vagrancy Violations","incident_date":"2025-10-24T16:20:00Z","incident_address":"Bishop Arts District, Dallas, TX","incident_latitude":32.7485,"incident_longitude":-96.8290},
-    {"incident_id":"mock-033","incident_offense":"Drunkenness","incident_date":"2025-10-24T16:40:00Z","incident_address":"Bishop Arts District, Dallas, TX","incident_latitude":32.7472,"incident_longitude":-96.8282},
-    {"incident_id":"mock-034","incident_offense":"Public Intoxication","incident_date":"2025-10-24T17:05:00Z","incident_address":"Jefferson Blvd, Dallas, TX","incident_latitude":32.7441,"incident_longitude":-96.8296},
-
-    {"incident_id":"mock-035","incident_offense":"Driving Under the Influence","incident_date":"2025-10-24T17:20:00Z","incident_address":"I-35E S, Dallas, TX","incident_latitude":32.7328,"incident_longitude":-96.8195},
-    {"incident_id":"mock-036","incident_offense":"Drunken Driving","incident_date":"2025-10-24T17:35:00Z","incident_address":"I-30 E, Dallas, TX","incident_latitude":32.7744,"incident_longitude":-96.7180},
-
-    {"incident_id":"mock-037","incident_offense":"Liquor Law Violations","incident_date":"2025-10-24T17:50:00Z","incident_address":"Lower Greenville Ave, Dallas, TX","incident_latitude":32.8130,"incident_longitude":-96.7705},
-    {"incident_id":"mock-038","incident_offense":"Obscene Material","incident_date":"2025-10-24T18:05:00Z","incident_address":"Lower Greenville Ave, Dallas, TX","incident_latitude":32.8164,"incident_longitude":-96.7701},
-
-    {"incident_id":"mock-039","incident_offense":"Drug/Narcotic Violations","incident_date":"2025-10-24T18:20:00Z","incident_address":"SMU Blvd, Dallas, TX","incident_latitude":32.8427,"incident_longitude":-96.7801},
-    {"incident_id":"mock-040","incident_offense":"Drug/Narcotic Violations","incident_date":"2025-10-24T18:35:00Z","incident_address":"University Crossing, Dallas, TX","incident_latitude":32.8471,"incident_longitude":-96.7756},
-
-    {"incident_id":"mock-041","incident_offense":"Trespassing","incident_date":"2025-10-24T18:50:00Z","incident_address":"White Rock Lake, Dallas, TX","incident_latitude":32.8516,"incident_longitude":-96.7174},
-    {"incident_id":"mock-042","incident_offense":"Bad Checks","incident_date":"2025-10-24T19:05:00Z","incident_address":"Casa Linda, Dallas, TX","incident_latitude":32.8340,"incident_longitude":-96.7089},
-
-    {"incident_id":"mock-043","incident_offense":"Burglary/Breaking & Entering","incident_date":"2025-10-24T19:20:00Z","incident_address":"Lakewood, Dallas, TX","incident_latitude":32.8185,"incident_longitude":-96.7585},
-    {"incident_id":"mock-044","incident_offense":"Theft From Motor Vehicle","incident_date":"2025-10-24T19:35:00Z","incident_address":"Lakewood, Dallas, TX","incident_latitude":32.8158,"incident_longitude":-96.7448},
-
-    {"incident_id":"mock-045","incident_offense":"Motor Vehicle Theft","incident_date":"2025-10-24T19:50:00Z","incident_address":"Highland Park, Dallas, TX","incident_latitude":32.8338,"incident_longitude":-96.8044},
-    {"incident_id":"mock-046","incident_offense":"Assault","incident_date":"2025-10-24T20:05:00Z","incident_address":"Highland Park Village, Dallas, TX","incident_latitude":32.8365,"incident_longitude":-96.8103},
-
-    {"incident_id":"mock-047","incident_offense":"Stolen Property Offenses","incident_date":"2025-10-24T20:20:00Z","incident_address":"Love Field, Dallas, TX","incident_latitude":32.8438,"incident_longitude":-96.8493},
-    {"incident_id":"mock-048","incident_offense":"Destruction/Damage/Vandalism","incident_date":"2025-10-24T20:35:00Z","incident_address":"Medical District, Dallas, TX","incident_latitude":32.8077,"incident_longitude":-96.8288},
-
-    {"incident_id":"mock-049","incident_offense":"Theft","incident_date":"2025-10-24T20:50:00Z","incident_address":"Oak Cliff, Dallas, TX","incident_latitude":32.7360,"incident_longitude":-96.8381},
-    {"incident_id":"mock-050","incident_offense":"Robbery","incident_date":"2025-10-24T21:05:00Z","incident_address":"Pleasant Grove, Dallas, TX","incident_latitude":32.7272,"incident_longitude":-96.6808}
+    {
+      "incident_id": "mock-001",
+      "incident_offense": "Motor Vehicle Theft",
+      "incident_date": "2025-10-28T20:19:30Z",
+      "incident_address": "2911 Gaston Ave, Dallas, TX",
+      "incident_latitude": 32.77346,
+      "incident_longitude": -96.793478
+    },
+    {
+      "incident_id": "mock-002",
+      "incident_offense": "Destruction/Damage/Vandalism of Property",
+      "incident_date": "2025-10-28T14:02:24Z",
+      "incident_address": "6673 Lemmon Ave, Love Field, Dallas, TX",
+      "incident_latitude": 32.776732,
+      "incident_longitude": -96.796836
+    },
+    {
+      "incident_id": "mock-003",
+      "incident_offense": "Drug/Narcotic Violations",
+      "incident_date": "2025-10-28T10:33:26Z",
+      "incident_address": "9405 Gaston Ave, Bishop Arts District, Dallas, TX",
+      "incident_latitude": 32.806848,
+      "incident_longitude": -96.844587
+    },
+    {
+      "incident_id": "mock-004",
+      "incident_offense": "Destruction/Damage/Vandalism of Property",
+      "incident_date": "2025-10-27T22:39:51Z",
+      "incident_address": "9476 Commerce St, Dallas, TX",
+      "incident_latitude": 32.788552,
+      "incident_longitude": -96.816331
+    },
+    {
+      "incident_id": "mock-005",
+      "incident_offense": "Destruction/Damage/Vandalism of Property",
+      "incident_date": "2025-10-27T21:11:48Z",
+      "incident_address": "5701 Pearl St, West End Historic District, Dallas, TX",
+      "incident_latitude": 32.7797,
+      "incident_longitude": -96.794318
+    },
+    {
+      "incident_id": "mock-006",
+      "incident_offense": "Counterfeiting/Forgery",
+      "incident_date": "2025-10-27T12:25:04Z",
+      "incident_address": "2380 Skillman St, Uptown, Dallas, TX",
+      "incident_latitude": 32.737204,
+      "incident_longitude": -96.822957
+    },
+    {
+      "incident_id": "mock-007",
+      "incident_offense": "Robbery",
+      "incident_date": "2025-10-27T07:56:37Z",
+      "incident_address": "2428 Cedar Springs Rd, Dallas, TX",
+      "incident_latitude": 32.77521,
+      "incident_longitude": -96.79336
+    },
+    {
+      "incident_id": "mock-008",
+      "incident_offense": "Driving Under the Influence",
+      "incident_date": "2025-10-27T04:12:06Z",
+      "incident_address": "6534 Lemmon Ave, Victory Park, Dallas, TX",
+      "incident_latitude": 32.811962,
+      "incident_longitude": -96.830771
+    },
+    {
+      "incident_id": "mock-009",
+      "incident_offense": "Identity Theft",
+      "incident_date": "2025-10-27T00:00:12Z",
+      "incident_address": "6542 Elm St, Dallas, TX",
+      "incident_latitude": 32.80197,
+      "incident_longitude": -96.865674
+    },
+    {
+      "incident_id": "mock-010",
+      "incident_offense": "Embezzlement",
+      "incident_date": "2025-10-26T09:39:58Z",
+      "incident_address": "2222 Mockingbird Ln, Victory Park, Dallas, TX",
+      "incident_latitude": 32.788238,
+      "incident_longitude": -96.802067
+    },
+    {
+      "incident_id": "mock-011",
+      "incident_offense": "Trespass of Real Property",
+      "incident_date": "2025-10-26T04:31:39Z",
+      "incident_address": "7019 Commerce St, Dallas, TX",
+      "incident_latitude": 32.785197,
+      "incident_longitude": -96.799124
+    },
+    {
+      "incident_id": "mock-012",
+      "incident_offense": "Drug/Narcotic Violations",
+      "incident_date": "2025-10-25T10:04:49Z",
+      "incident_address": "2475 McKinney Ave, Dallas, TX",
+      "incident_latitude": 32.794301,
+      "incident_longitude": -96.813459
+    },
+    {
+      "incident_id": "mock-013",
+      "incident_offense": "Theft of Motor Vehicle Parts or Accessories",
+      "incident_date": "2025-10-25T01:53:04Z",
+      "incident_address": "2811 Abrams Rd, Dallas, TX",
+      "incident_latitude": 32.773594,
+      "incident_longitude": -96.739322
+    },
+    {
+      "incident_id": "mock-014",
+      "incident_offense": "Destruction/Damage/Vandalism of Property",
+      "incident_date": "2025-10-25T01:44:59Z",
+      "incident_address": "7321 Harwood St, Dallas, TX",
+      "incident_latitude": 32.800577,
+      "incident_longitude": -96.748005
+    },
+    {
+      "incident_id": "mock-015",
+      "incident_offense": "Driving Under the Influence",
+      "incident_date": "2025-10-24T21:17:36Z",
+      "incident_address": "603 Pearl St, Mockingbird Station, Dallas, TX",
+      "incident_latitude": 32.794644,
+      "incident_longitude": -96.854781
+    },
+    {
+      "incident_id": "mock-016",
+      "incident_offense": "Simple Assault",
+      "incident_date": "2025-10-24T04:04:12Z",
+      "incident_address": "6474 Davis St, Lakewood, Dallas, TX",
+      "incident_latitude": 32.777269,
+      "incident_longitude": -96.773244
+    },
+    {
+      "incident_id": "mock-017",
+      "incident_offense": "Disorderly Conduct",
+      "incident_date": "2025-10-23T21:34:26Z",
+      "incident_address": "3643 Akard St, Downtown Dallas, Dallas, TX",
+      "incident_latitude": 32.75819,
+      "incident_longitude": -96.811542
+    },
+    {
+      "incident_id": "mock-018",
+      "incident_offense": "Public Intoxication",
+      "incident_date": "2025-10-23T09:30:01Z",
+      "incident_address": "9575 Pearl St, Oak Lawn, Dallas, TX",
+      "incident_latitude": 32.804957,
+      "incident_longitude": -96.748511
+    },
+    {
+      "incident_id": "mock-019",
+      "incident_offense": "Disorderly Conduct",
+      "incident_date": "2025-10-23T03:08:13Z",
+      "incident_address": "2522 Cedar Springs Rd, Mockingbird Station, Dallas, TX",
+      "incident_latitude": 32.79002,
+      "incident_longitude": -96.823921
+    },
+    {
+      "incident_id": "mock-020",
+      "incident_offense": "Counterfeiting/Forgery",
+      "incident_date": "2025-10-23T00:46:45Z",
+      "incident_address": "7154 Canton St, Arts District, Dallas, TX",
+      "incident_latitude": 32.771315,
+      "incident_longitude": -96.796897
+    },
+    {
+      "incident_id": "mock-021",
+      "incident_offense": "Public Intoxication",
+      "incident_date": "2025-10-22T23:55:43Z",
+      "incident_address": "2853 Davis St, Dallas, TX",
+      "incident_latitude": 32.815266,
+      "incident_longitude": -96.779886
+    },
+    {
+      "incident_id": "mock-022",
+      "incident_offense": "Fraud - Credit Card/ATM",
+      "incident_date": "2025-10-22T04:26:51Z",
+      "incident_address": "9729 Jefferson Blvd, Mockingbird Station, Dallas, TX",
+      "incident_latitude": 32.781578,
+      "incident_longitude": -96.844563
+    },
+    {
+      "incident_id": "mock-023",
+      "incident_offense": "Public Intoxication",
+      "incident_date": "2025-10-22T00:28:30Z",
+      "incident_address": "4563 Davis St, Trinity Groves, Dallas, TX",
+      "incident_latitude": 32.790043,
+      "incident_longitude": -96.801084
+    },
+    {
+      "incident_id": "mock-024",
+      "incident_offense": "Destruction/Damage/Vandalism of Property",
+      "incident_date": "2025-10-21T18:37:34Z",
+      "incident_address": "6141 Davis St, Deep Ellum, Dallas, TX",
+      "incident_latitude": 32.768808,
+      "incident_longitude": -96.832577
+    },
+    {
+      "incident_id": "mock-025",
+      "incident_offense": "Robbery",
+      "incident_date": "2025-10-21T13:19:21Z",
+      "incident_address": "2779 Greenville Ave, Dallas, TX",
+      "incident_latitude": 32.786714,
+      "incident_longitude": -96.802897
+    },
+    {
+      "incident_id": "mock-026",
+      "incident_offense": "Simple Assault",
+      "incident_date": "2025-10-21T07:48:32Z",
+      "incident_address": "4638 Pearl St, Dallas, TX",
+      "incident_latitude": 32.764055,
+      "incident_longitude": -96.7181
+    },
+    {
+      "incident_id": "mock-027",
+      "incident_offense": "Public Intoxication",
+      "incident_date": "2025-10-20T06:39:20Z",
+      "incident_address": "731 Ross Ave, Lakewood, Dallas, TX",
+      "incident_latitude": 32.788779,
+      "incident_longitude": -96.788268
+    },
+    {
+      "incident_id": "mock-028",
+      "incident_offense": "Identity Theft",
+      "incident_date": "2025-10-19T22:38:07Z",
+      "incident_address": "5618 Harwood St, Dallas, TX",
+      "incident_latitude": 32.776795,
+      "incident_longitude": -96.79687
+    },
+    {
+      "incident_id": "mock-029",
+      "incident_offense": "Simple Assault",
+      "incident_date": "2025-10-19T18:45:19Z",
+      "incident_address": "9580 Commerce St, University Park, Dallas, TX",
+      "incident_latitude": 32.757599,
+      "incident_longitude": -96.818925
+    },
+    {
+      "incident_id": "mock-030",
+      "incident_offense": "Fraud - Credit Card/ATM",
+      "incident_date": "2025-10-19T17:22:39Z",
+      "incident_address": "6063 Harwood St, Dallas, TX",
+      "incident_latitude": 32.741531,
+      "incident_longitude": -96.855087
+    },
+    {
+      "incident_id": "mock-031",
+      "incident_offense": "Destruction/Damage/Vandalism of Property",
+      "incident_date": "2025-10-19T16:00:41Z",
+      "incident_address": "7920 Greenville Ave, Dallas, TX",
+      "incident_latitude": 32.776992,
+      "incident_longitude": -96.798602
+    },
+    {
+      "incident_id": "mock-032",
+      "incident_offense": "Fraud - Credit Card/ATM",
+      "incident_date": "2025-10-19T14:25:26Z",
+      "incident_address": "6781 Pacific Ave, White Rock Lake, Dallas, TX",
+      "incident_latitude": 32.776806,
+      "incident_longitude": -96.797128
+    },
+    {
+      "incident_id": "mock-033",
+      "incident_offense": "Destruction/Damage/Vandalism of Property",
+      "incident_date": "2025-10-19T00:33:55Z",
+      "incident_address": "1320 Commerce St, Dallas, TX",
+      "incident_latitude": 32.763298,
+      "incident_longitude": -96.758897
+    },
+    {
+      "incident_id": "mock-034",
+      "incident_offense": "Drug/Narcotic Violations",
+      "incident_date": "2025-10-18T17:49:13Z",
+      "incident_address": "938 Davis St, Casa Linda, Dallas, TX",
+      "incident_latitude": 32.767184,
+      "incident_longitude": -96.789097
+    },
+    {
+      "incident_id": "mock-035",
+      "incident_offense": "Public Intoxication",
+      "incident_date": "2025-10-18T16:21:04Z",
+      "incident_address": "5782 Skillman St, Old East Dallas, Dallas, TX",
+      "incident_latitude": 32.776702,
+      "incident_longitude": -96.796972
+    },
+    {
+      "incident_id": "mock-036",
+      "incident_offense": "Weapon Law Violations",
+      "incident_date": "2025-10-18T05:25:45Z",
+      "incident_address": "5800 Canton St, Dallas, TX",
+      "incident_latitude": 32.770904,
+      "incident_longitude": -96.790925
+    },
+    {
+      "incident_id": "mock-037",
+      "incident_offense": "Trespass of Real Property",
+      "incident_date": "2025-10-18T01:01:16Z",
+      "incident_address": "1698 Commerce St, Design District, Dallas, TX",
+      "incident_latitude": 32.803438,
+      "incident_longitude": -96.799183
+    },
+    {
+      "incident_id": "mock-038",
+      "incident_offense": "Motor Vehicle Theft",
+      "incident_date": "2025-10-17T20:08:30Z",
+      "incident_address": "5112 Commerce St, Trinity Groves, Dallas, TX",
+      "incident_latitude": 32.776124,
+      "incident_longitude": -96.778093
+    },
+    {
+      "incident_id": "mock-039",
+      "incident_offense": "Burglary/Breaking & Entering",
+      "incident_date": "2025-10-17T03:56:48Z",
+      "incident_address": "1824 Skillman St, Dallas, TX",
+      "incident_latitude": 32.760268,
+      "incident_longitude": -96.792409
+    },
+    {
+      "incident_id": "mock-040",
+      "incident_offense": "Burglary/Breaking & Entering",
+      "incident_date": "2025-10-17T01:12:10Z",
+      "incident_address": "2860 Canton St, Dallas, TX",
+      "incident_latitude": 32.777427,
+      "incident_longitude": -96.8249
+    },
+    {
+      "incident_id": "mock-041",
+      "incident_offense": "Burglary/Breaking & Entering",
+      "incident_date": "2025-10-17T00:47:26Z",
+      "incident_address": "564 Singleton Blvd, Dallas, TX",
+      "incident_latitude": 32.775359,
+      "incident_longitude": -96.792461
+    },
+    {
+      "incident_id": "mock-042",
+      "incident_offense": "Trespass of Real Property",
+      "incident_date": "2025-10-16T22:44:08Z",
+      "incident_address": "3403 Davis St, Casa Linda, Dallas, TX",
+      "incident_latitude": 32.786469,
+      "incident_longitude": -96.783958
+    },
+    {
+      "incident_id": "mock-043",
+      "incident_offense": "Public Intoxication",
+      "incident_date": "2025-10-16T22:41:09Z",
+      "incident_address": "8284 Olive St, Dallas, TX",
+      "incident_latitude": 32.76692,
+      "incident_longitude": -96.771927
+    },
+    {
+      "incident_id": "mock-044",
+      "incident_offense": "Public Intoxication",
+      "incident_date": "2025-10-15T19:19:23Z",
+      "incident_address": "7532 Harwood St, Dallas, TX",
+      "incident_latitude": 32.775514,
+      "incident_longitude": -96.803705
+    },
+    {
+      "incident_id": "mock-045",
+      "incident_offense": "Theft of Motor Vehicle Parts or Accessories",
+      "incident_date": "2025-10-15T11:27:35Z",
+      "incident_address": "357 Jefferson Blvd, University Park, Dallas, TX",
+      "incident_latitude": 32.77899,
+      "incident_longitude": -96.797319
+    },
+    {
+      "incident_id": "mock-046",
+      "incident_offense": "Identity Theft",
+      "incident_date": "2025-10-15T06:25:52Z",
+      "incident_address": "7103 Maple Ave, Dallas, TX",
+      "incident_latitude": 32.756031,
+      "incident_longitude": -96.779735
+    },
+    {
+      "incident_id": "mock-047",
+      "incident_offense": "Public Intoxication",
+      "incident_date": "2025-10-15T04:17:07Z",
+      "incident_address": "3430 Cedar Springs Rd, Trinity Groves, Dallas, TX",
+      "incident_latitude": 32.778328,
+      "incident_longitude": -96.797309
+    },
+    {
+      "incident_id": "mock-048",
+      "incident_offense": "Theft of Motor Vehicle Parts or Accessories",
+      "incident_date": "2025-10-15T01:44:45Z",
+      "incident_address": "6824 Canton St, Deep Ellum, Dallas, TX",
+      "incident_latitude": 32.779883,
+      "incident_longitude": -96.794705
+    },
+    {
+      "incident_id": "mock-049",
+      "incident_offense": "Disorderly Conduct",
+      "incident_date": "2025-10-14T23:04:10Z",
+      "incident_address": "5853 Davis St, Dallas, TX",
+      "incident_latitude": 32.776783,
+      "incident_longitude": -96.796902
+    },
+    {
+      "incident_id": "mock-050",
+      "incident_offense": "Public Intoxication",
+      "incident_date": "2025-10-14T20:22:24Z",
+      "incident_address": "4766 Olive St, Dallas, TX",
+      "incident_latitude": 32.776835,
+      "incident_longitude": -96.798413
+    },
+    {
+      "incident_id": "mock-051",
+      "incident_offense": "Public Intoxication",
+      "incident_date": "2025-10-14T04:58:20Z",
+      "incident_address": "6074 Pearl St, Dallas, TX",
+      "incident_latitude": 32.783338,
+      "incident_longitude": -96.782463
+    },
+    {
+      "incident_id": "mock-052",
+      "incident_offense": "Theft From Motor Vehicle",
+      "incident_date": "2025-10-13T22:03:55Z",
+      "incident_address": "8332 Davis St, Dallas, TX",
+      "incident_latitude": 32.791561,
+      "incident_longitude": -96.788475
+    },
+    {
+      "incident_id": "mock-053",
+      "incident_offense": "Counterfeiting/Forgery",
+      "incident_date": "2025-10-13T17:33:32Z",
+      "incident_address": "4132 Olive St, Dallas, TX",
+      "incident_latitude": 32.805739,
+      "incident_longitude": -96.774128
+    },
+    {
+      "incident_id": "mock-054",
+      "incident_offense": "Fraud - Credit Card/ATM",
+      "incident_date": "2025-10-13T16:31:32Z",
+      "incident_address": "1787 Greenville Ave, Trinity Groves, Dallas, TX",
+      "incident_latitude": 32.748144,
+      "incident_longitude": -96.718769
+    },
+    {
+      "incident_id": "mock-055",
+      "incident_offense": "Identity Theft",
+      "incident_date": "2025-10-13T10:56:31Z",
+      "incident_address": "7747 Mockingbird Ln, Dallas, TX",
+      "incident_latitude": 32.738096,
+      "incident_longitude": -96.770517
+    },
+    {
+      "incident_id": "mock-056",
+      "incident_offense": "All Other Larceny",
+      "incident_date": "2025-10-12T21:21:59Z",
+      "incident_address": "984 Akard St, Dallas, TX",
+      "incident_latitude": 32.780478,
+      "incident_longitude": -96.800315
+    },
+    {
+      "incident_id": "mock-057",
+      "incident_offense": "Shoplifting",
+      "incident_date": "2025-10-12T21:11:31Z",
+      "incident_address": "2226 Pacific Ave, Oak Lawn, Dallas, TX",
+      "incident_latitude": 32.778858,
+      "incident_longitude": -96.8083
+    },
+    {
+      "incident_id": "mock-058",
+      "incident_offense": "Disorderly Conduct",
+      "incident_date": "2025-10-12T19:31:59Z",
+      "incident_address": "6509 Gaston Ave, Dallas, TX",
+      "incident_latitude": 32.762979,
+      "incident_longitude": -96.797434
+    },
+    {
+      "incident_id": "mock-059",
+      "incident_offense": "Fraud - Credit Card/ATM",
+      "incident_date": "2025-10-12T17:17:59Z",
+      "incident_address": "7257 Commerce St, Fair Park, Dallas, TX",
+      "incident_latitude": 32.797018,
+      "incident_longitude": -96.774996
+    },
+    {
+      "incident_id": "mock-060",
+      "incident_offense": "Trespass of Real Property",
+      "incident_date": "2025-10-11T16:22:14Z",
+      "incident_address": "2122 Fitzhugh Ave, White Rock Lake, Dallas, TX",
+      "incident_latitude": 32.776743,
+      "incident_longitude": -96.796683
+    },
+    {
+      "incident_id": "mock-061",
+      "incident_offense": "Disorderly Conduct",
+      "incident_date": "2025-10-11T14:48:59Z",
+      "incident_address": "2835 McKinney Ave, Lower Greenville, Dallas, TX",
+      "incident_latitude": 32.776729,
+      "incident_longitude": -96.796993
+    },
+    {
+      "incident_id": "mock-062",
+      "incident_offense": "Burglary/Breaking & Entering",
+      "incident_date": "2025-10-10T17:09:39Z",
+      "incident_address": "5280 Mockingbird Ln, Dallas, TX",
+      "incident_latitude": 32.834003,
+      "incident_longitude": -96.788992
+    },
+    {
+      "incident_id": "mock-063",
+      "incident_offense": "Drug/Narcotic Violations",
+      "incident_date": "2025-10-10T13:03:15Z",
+      "incident_address": "1850 Olive St, Dallas, TX",
+      "incident_latitude": 32.777095,
+      "incident_longitude": -96.79714
+    },
+    {
+      "incident_id": "mock-064",
+      "incident_offense": "Motor Vehicle Theft",
+      "incident_date": "2025-10-10T08:56:41Z",
+      "incident_address": "4592 Commerce St, Dallas, TX",
+      "incident_latitude": 32.781638,
+      "incident_longitude": -96.809009
+    },
+    {
+      "incident_id": "mock-065",
+      "incident_offense": "Driving Under the Influence",
+      "incident_date": "2025-10-10T07:20:50Z",
+      "incident_address": "7377 Fitzhugh Ave, Dallas, TX",
+      "incident_latitude": 32.797321,
+      "incident_longitude": -96.785785
+    },
+    {
+      "incident_id": "mock-066",
+      "incident_offense": "Fraud - Credit Card/ATM",
+      "incident_date": "2025-10-09T12:54:24Z",
+      "incident_address": "2341 Fitzhugh Ave, Dallas, TX",
+      "incident_latitude": 32.777198,
+      "incident_longitude": -96.801451
+    },
+    {
+      "incident_id": "mock-067",
+      "incident_offense": "Public Intoxication",
+      "incident_date": "2025-10-09T10:23:38Z",
+      "incident_address": "3191 Greenville Ave, Dallas, TX",
+      "incident_latitude": 32.758652,
+      "incident_longitude": -96.799081
+    },
+    {
+      "incident_id": "mock-068",
+      "incident_offense": "Trespass of Real Property",
+      "incident_date": "2025-10-09T07:38:18Z",
+      "incident_address": "2537 Olive St, Bishop Arts District, Dallas, TX",
+      "incident_latitude": 32.80864,
+      "incident_longitude": -96.766674
+    },
+    {
+      "incident_id": "mock-069",
+      "incident_offense": "Driving Under the Influence",
+      "incident_date": "2025-10-09T00:09:42Z",
+      "incident_address": "2114 Singleton Blvd, Dallas, TX",
+      "incident_latitude": 32.809345,
+      "incident_longitude": -96.793398
+    },
+    {
+      "incident_id": "mock-070",
+      "incident_offense": "Trespass of Real Property",
+      "incident_date": "2025-10-08T06:02:32Z",
+      "incident_address": "6762 Canton St, Dallas, TX",
+      "incident_latitude": 32.776717,
+      "incident_longitude": -96.797077
+    },
+    {
+      "incident_id": "mock-071",
+      "incident_offense": "Disorderly Conduct",
+      "incident_date": "2025-10-08T02:14:50Z",
+      "incident_address": "3728 Akard St, Dallas, TX",
+      "incident_latitude": 32.774713,
+      "incident_longitude": -96.788947
+    },
+    {
+      "incident_id": "mock-072",
+      "incident_offense": "Destruction/Damage/Vandalism of Property",
+      "incident_date": "2025-10-07T03:13:31Z",
+      "incident_address": "8241 Mockingbird Ln, Lakewood, Dallas, TX",
+      "incident_latitude": 32.778291,
+      "incident_longitude": -96.791392
+    },
+    {
+      "incident_id": "mock-073",
+      "incident_offense": "Destruction/Damage/Vandalism of Property",
+      "incident_date": "2025-10-07T03:01:04Z",
+      "incident_address": "4557 Canton St, Medical District, Dallas, TX",
+      "incident_latitude": 32.815955,
+      "incident_longitude": -96.796137
+    },
+    {
+      "incident_id": "mock-074",
+      "incident_offense": "Weapon Law Violations",
+      "incident_date": "2025-10-06T20:22:46Z",
+      "incident_address": "3133 Ross Ave, Dallas, TX",
+      "incident_latitude": 32.776665,
+      "incident_longitude": -96.796972
+    },
+    {
+      "incident_id": "mock-075",
+      "incident_offense": "Identity Theft",
+      "incident_date": "2025-10-06T13:33:20Z",
+      "incident_address": "6582 Greenville Ave, Medical District, Dallas, TX",
+      "incident_latitude": 32.807692,
+      "incident_longitude": -96.806516
+    },
+    {
+      "incident_id": "mock-076",
+      "incident_offense": "Public Intoxication",
+      "incident_date": "2025-10-06T08:43:17Z",
+      "incident_address": "3535 Greenville Ave, Medical District, Dallas, TX",
+      "incident_latitude": 32.80105,
+      "incident_longitude": -96.730433
+    },
+    {
+      "incident_id": "mock-077",
+      "incident_offense": "All Other Larceny",
+      "incident_date": "2025-10-06T08:12:10Z",
+      "incident_address": "4059 Ross Ave, Dallas, TX",
+      "incident_latitude": 32.807693,
+      "incident_longitude": -96.852738
+    },
+    {
+      "incident_id": "mock-078",
+      "incident_offense": "Trespass of Real Property",
+      "incident_date": "2025-10-05T15:16:43Z",
+      "incident_address": "4933 Main St, Lower Greenville, Dallas, TX",
+      "incident_latitude": 32.801149,
+      "incident_longitude": -96.804596
+    },
+    {
+      "incident_id": "mock-079",
+      "incident_offense": "Destruction/Damage/Vandalism of Property",
+      "incident_date": "2025-10-05T07:42:28Z",
+      "incident_address": "9137 Greenville Ave, Knox/Henderson, Dallas, TX",
+      "incident_latitude": 32.769752,
+      "incident_longitude": -96.789694
+    },
+    {
+      "incident_id": "mock-080",
+      "incident_offense": "Simple Assault",
+      "incident_date": "2025-10-04T21:10:05Z",
+      "incident_address": "417 Commerce St, Mockingbird Station, Dallas, TX",
+      "incident_latitude": 32.781183,
+      "incident_longitude": -96.766992
+    },
+    {
+      "incident_id": "mock-081",
+      "incident_offense": "Destruction/Damage/Vandalism of Property",
+      "incident_date": "2025-10-03T17:33:39Z",
+      "incident_address": "5160 Ross Ave, Uptown, Dallas, TX",
+      "incident_latitude": 32.753125,
+      "incident_longitude": -96.765578
+    },
+    {
+      "incident_id": "mock-082",
+      "incident_offense": "Public Intoxication",
+      "incident_date": "2025-10-03T12:01:34Z",
+      "incident_address": "1346 Cedar Springs Rd, Pleasant Grove, Dallas, TX",
+      "incident_latitude": 32.782634,
+      "incident_longitude": -96.740351
+    },
+    {
+      "incident_id": "mock-083",
+      "incident_offense": "Drug/Narcotic Violations",
+      "incident_date": "2025-10-03T11:11:15Z",
+      "incident_address": "1024 Akard St, Lakewood, Dallas, TX",
+      "incident_latitude": 32.759105,
+      "incident_longitude": -96.765597
+    },
+    {
+      "incident_id": "mock-084",
+      "incident_offense": "Public Intoxication",
+      "incident_date": "2025-10-03T08:26:23Z",
+      "incident_address": "2133 Maple Ave, White Rock Lake, Dallas, TX",
+      "incident_latitude": 32.77517,
+      "incident_longitude": -96.788396
+    },
+    {
+      "incident_id": "mock-085",
+      "incident_offense": "Drug/Narcotic Violations",
+      "incident_date": "2025-10-03T08:18:36Z",
+      "incident_address": "3756 Pearl St, Uptown, Dallas, TX",
+      "incident_latitude": 32.777708,
+      "incident_longitude": -96.795602
+    },
+    {
+      "incident_id": "mock-086",
+      "incident_offense": "Driving Under the Influence",
+      "incident_date": "2025-10-03T01:11:29Z",
+      "incident_address": "2858 McKinney Ave, West End Historic District, Dallas, TX",
+      "incident_latitude": 32.724645,
+      "incident_longitude": -96.804375
+    },
+    {
+      "incident_id": "mock-087",
+      "incident_offense": "All Other Larceny",
+      "incident_date": "2025-10-02T01:23:53Z",
+      "incident_address": "8977 Olive St, Oak Cliff, Dallas, TX",
+      "incident_latitude": 32.777068,
+      "incident_longitude": -96.797398
+    },
+    {
+      "incident_id": "mock-088",
+      "incident_offense": "Stolen Property Offenses",
+      "incident_date": "2025-10-01T22:53:25Z",
+      "incident_address": "3730 McKinney Ave, Dallas, TX",
+      "incident_latitude": 32.709276,
+      "incident_longitude": -96.782403
+    },
+    {
+      "incident_id": "mock-089",
+      "incident_offense": "Fraud - Credit Card/ATM",
+      "incident_date": "2025-10-01T22:36:44Z",
+      "incident_address": "9392 Pacific Ave, Dallas, TX",
+      "incident_latitude": 32.783189,
+      "incident_longitude": -96.797235
+    },
+    {
+      "incident_id": "mock-090",
+      "incident_offense": "Stolen Property Offenses",
+      "incident_date": "2025-10-01T21:13:02Z",
+      "incident_address": "8164 Ross Ave, Dallas, TX",
+      "incident_latitude": 32.807167,
+      "incident_longitude": -96.775683
+    },
+    {
+      "incident_id": "mock-091",
+      "incident_offense": "Disorderly Conduct",
+      "incident_date": "2025-10-01T19:36:12Z",
+      "incident_address": "7929 Greenville Ave, Arts District, Dallas, TX",
+      "incident_latitude": 32.738545,
+      "incident_longitude": -96.72724
+    },
+    {
+      "incident_id": "mock-092",
+      "incident_offense": "Theft From Motor Vehicle",
+      "incident_date": "2025-10-01T05:00:12Z",
+      "incident_address": "3531 Singleton Blvd, Dallas, TX",
+      "incident_latitude": 32.776983,
+      "incident_longitude": -96.797047
+    },
+    {
+      "incident_id": "mock-093",
+      "incident_offense": "Public Intoxication",
+      "incident_date": "2025-10-01T00:12:33Z",
+      "incident_address": "5524 Commerce St, Dallas, TX",
+      "incident_latitude": 32.785157,
+      "incident_longitude": -96.796199
+    },
+    {
+      "incident_id": "mock-094",
+      "incident_offense": "Public Intoxication",
+      "incident_date": "2025-09-30T15:23:28Z",
+      "incident_address": "5816 Elm St, Arts District, Dallas, TX",
+      "incident_latitude": 32.732373,
+      "incident_longitude": -96.780133
+    },
+    {
+      "incident_id": "mock-095",
+      "incident_offense": "Destruction/Damage/Vandalism of Property",
+      "incident_date": "2025-09-30T10:47:16Z",
+      "incident_address": "9593 Haskell Ave, Dallas, TX",
+      "incident_latitude": 32.767699,
+      "incident_longitude": -96.806395
+    },
+    {
+      "incident_id": "mock-096",
+      "incident_offense": "Drug/Narcotic Violations",
+      "incident_date": "2025-09-30T10:13:48Z",
+      "incident_address": "9672 Field St, Dallas, TX",
+      "incident_latitude": 32.769262,
+      "incident_longitude": -96.782463
+    },
+    {
+      "incident_id": "mock-097",
+      "incident_offense": "Disorderly Conduct",
+      "incident_date": "2025-09-30T07:15:53Z",
+      "incident_address": "9460 McKinney Ave, Casa Linda, Dallas, TX",
+      "incident_latitude": 32.773534,
+      "incident_longitude": -96.769154
+    },
+    {
+      "incident_id": "mock-098",
+      "incident_offense": "Drug/Narcotic Violations",
+      "incident_date": "2025-09-30T06:32:00Z",
+      "incident_address": "6363 Fitzhugh Ave, Highland Park, Dallas, TX",
+      "incident_latitude": 32.7767,
+      "incident_longitude": -96.797
+    },
+    {
+      "incident_id": "mock-099",
+      "incident_offense": "Identity Theft",
+      "incident_date": "2025-09-30T04:49:04Z",
+      "incident_address": "5467 Canton St, Pleasant Grove, Dallas, TX",
+      "incident_latitude": 32.752054,
+      "incident_longitude": -96.810735
+    },
+    {
+      "incident_id": "mock-100",
+      "incident_offense": "All Other Larceny",
+      "incident_date": "2025-09-30T00:33:31Z",
+      "incident_address": "8642 Lemmon Ave, Oak Lawn, Dallas, TX",
+      "incident_latitude": 32.749483,
+      "incident_longitude": -96.724082
+    }
   ]
 }
