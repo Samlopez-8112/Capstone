@@ -2,7 +2,7 @@
   "incidents": [
     {"incident_id":"mock-001","incident_offense":"Burglary/Breaking & Entering","incident_date":"2025-10-24T14:05:00Z","incident_address":"1900 Pacific Ave, Dallas, TX","incident_latitude":32.77680,"incident_longitude":-96.79705},
     {"incident_id":"mock-002","incident_offense":"Robbery","incident_date":"2025-10-24T14:07:00Z","incident_address":"1910 Pacific Ave, Dallas, TX","incident_latitude":32.77690,"incident_longitude":-96.79695},
-    {"incident_id":"mock-003","incident_offense":"Simple Assault","incident_date":"2025-10-24T14:09:00Z","incident_address":"1920 Pacific Ave, Dallas, TX","incident_latitude":32.77670,"incident_longitude":-96.79712},
+    {"incident_id":"mock-003","incident_offense":"Assault","incident_date":"2025-10-24T14:09:00Z","incident_address":"1920 Pacific Ave, Dallas, TX","incident_latitude":32.77670,"incident_longitude":-96.79712},
 
     {"incident_id":"mock-004","incident_offense":"Aggravated Assault","incident_date":"2025-10-24T10:01:00Z","incident_address":"3220 N Harwood St, Dallas, TX","incident_latitude":32.7941,"incident_longitude":-96.8089},
     {"incident_id":"mock-005","incident_offense":"Motor Vehicle Theft","incident_date":"2025-10-24T10:21:00Z","incident_address":"2500 Victory Ave, Dallas, TX","incident_latitude":32.7902,"incident_longitude":-96.8108},
@@ -10,12 +10,12 @@
     {"incident_id":"mock-007","incident_offense":"Destruction/Damage/Vandalism","incident_date":"2025-10-24T12:44:00Z","incident_address":"1500 Turtle Creek Blvd, Dallas, TX","incident_latitude":32.8040,"incident_longitude":-96.8127},
     {"incident_id":"mock-008","incident_offense":"Stolen Property Offenses","incident_date":"2025-10-24T13:18:00Z","incident_address":"2400 N Field St, Dallas, TX","incident_latitude":32.7917,"incident_longitude":-96.8069},
 
-    {"incident_id":"mock-009","incident_offense":"Homicide/Negligent Manslaughter","incident_date":"2025-10-24T02:31:00Z","incident_address":"350 Continental Ave, Dallas, TX","incident_latitude":32.7786,"incident_longitude":-96.8211},
+    {"incident_id":"mock-009","incident_offense":"Robbery","incident_date":"2025-10-24T02:31:00Z","incident_address":"350 Continental Ave, Dallas, TX","incident_latitude":32.7786,"incident_longitude":-96.8211},
     {"incident_id":"mock-010","incident_offense":"Drug Possesion","incident_date":"2025-10-24T03:20:00Z","incident_address":"3011 Gulden Ln, Dallas, TX","incident_latitude":32.7789,"incident_longitude":-96.8302},
 
     {"incident_id":"mock-011","incident_offense":"Theft of Motor Vehicle Parts","incident_date":"2025-10-24T07:10:00Z","incident_address":"5300 Lemmon Ave, Dallas, TX","incident_latitude":32.8246,"incident_longitude":-96.8217},
     {"incident_id":"mock-012","incident_offense":"Counterfeiting/Forgery","incident_date":"2025-10-24T08:02:00Z","incident_address":"4123 Cedar Springs Rd, Dallas, TX","incident_latitude":32.8139,"incident_longitude":-96.8161},
-    {"incident_id":"mock-013","incident_offense":"Fraud – False Pretenses","incident_date":"2025-10-24T08:33:00Z","incident_address":"4515 Lemmon Ave, Dallas, TX","incident_latitude":32.8200,"incident_longitude":-96.8140},
+    {"incident_id":"mock-013","incident_offense":"Credit Card Fraud","incident_date":"2025-10-24T08:33:00Z","incident_address":"4515 Lemmon Ave, Dallas, TX","incident_latitude":32.8200,"incident_longitude":-96.8140},
     {"incident_id":"mock-014","incident_offense":"Embezzlement","incident_date":"2025-10-24T09:10:00Z","incident_address":"4100 Maple Ave, Dallas, TX","incident_latitude":32.8087,"incident_longitude":-96.8281},
 
     {"incident_id":"mock-015","incident_offense":"Identity Theft","incident_date":"2025-10-24T09:40:00Z","incident_address":"8687 N Central Expy, Dallas, TX","incident_latitude":32.8663,"incident_longitude":-96.7706},
@@ -25,12 +25,12 @@
     {"incident_id":"mock-020","incident_offense":"Kidnapping/Abduction","incident_date":"2025-10-24T12:05:00Z","incident_address":"Fair Park, Dallas, TX","incident_latitude":32.7804,"incident_longitude":-96.7607},
     {"incident_id":"mock-021","incident_offense":"Robbery","incident_date":"2025-10-24T12:20:00Z","incident_address":"3809 Grand Ave, Dallas, TX","incident_latitude":32.7766,"incident_longitude":-96.7574},
     {"incident_id":"mock-022","incident_offense":"Burglary","incident_date":"2025-10-24T12:50:00Z","incident_address":"3600 Parry Ave, Dallas, TX","incident_latitude":32.7810,"incident_longitude":-96.7655},
-    {"incident_id":"mock-023","incident_offense":"Fondling","incident_date":"2025-10-24T13:05:00Z","incident_address":"3700 Parry Ave, Dallas, TX","incident_latitude":32.7793,"incident_longitude":-96.7630},
+    {"incident_id":"mock-023","incident_offense":"Drug/Narcotic Violations","incident_date":"2025-10-24T13:05:00Z","incident_address":"3700 Parry Ave, Dallas, TX","incident_latitude":32.7793,"incident_longitude":-96.7630},
 
-    {"incident_id":"mock-024","incident_offense":"Prostitution","incident_date":"2025-10-24T14:10:00Z","incident_address":"Deep Ellum, Dallas, TX","incident_latitude":32.7832,"incident_longitude":-96.7850},
-    {"incident_id":"mock-025","incident_offense":"Assisting or Promoting Prostitution","incident_date":"2025-10-24T14:25:00Z","incident_address":"Deep Ellum, Dallas, TX","incident_latitude":32.7839,"incident_longitude":-96.7822},
-    {"incident_id":"mock-026","incident_offense":"Gambling Equipment Violations","incident_date":"2025-10-24T14:40:00Z","incident_address":"2700 Canton St, Dallas, TX","incident_latitude":32.7821,"incident_longitude":-96.7868},
-    {"incident_id":"mock-027","incident_offense":"Sports Tampering","incident_date":"2025-10-24T14:55:00Z","incident_address":"2600 Main St, Dallas, TX","incident_latitude":32.7827,"incident_longitude":-96.7891},
+    {"incident_id":"mock-024","incident_offense":"Drug/Narcotic Violations","incident_date":"2025-10-24T14:10:00Z","incident_address":"Deep Ellum, Dallas, TX","incident_latitude":32.7832,"incident_longitude":-96.7850},
+    {"incident_id":"mock-025","incident_offense":"Drug/Narcotic Violations","incident_date":"2025-10-24T14:25:00Z","incident_address":"Deep Ellum, Dallas, TX","incident_latitude":32.7839,"incident_longitude":-96.7822},
+    {"incident_id":"mock-026","incident_offense":"Trespass of Real Property","incident_date":"2025-10-24T14:40:00Z","incident_address":"2700 Canton St, Dallas, TX","incident_latitude":32.7821,"incident_longitude":-96.7868},
+    {"incident_id":"mock-027","incident_offense":"Trespass of Real Property","incident_date":"2025-10-24T14:55:00Z","incident_address":"2600 Main St, Dallas, TX","incident_latitude":32.7827,"incident_longitude":-96.7891},
 
     {"incident_id":"mock-028","incident_offense":"Extortion/Blackmail","incident_date":"2025-10-24T15:05:00Z","incident_address":"AT&T Discovery District, Dallas, TX","incident_latitude":32.7788,"incident_longitude":-96.7979},
     {"incident_id":"mock-029","incident_offense":"Stolen Property Offenses","incident_date":"2025-10-24T15:20:00Z","incident_address":"West End Historic District, Dallas, TX","incident_latitude":32.7805,"incident_longitude":-96.8066},
@@ -48,9 +48,9 @@
     {"incident_id":"mock-038","incident_offense":"Obscene Material","incident_date":"2025-10-24T18:05:00Z","incident_address":"Lower Greenville Ave, Dallas, TX","incident_latitude":32.8164,"incident_longitude":-96.7701},
 
     {"incident_id":"mock-039","incident_offense":"Drug/Narcotic Violations","incident_date":"2025-10-24T18:20:00Z","incident_address":"SMU Blvd, Dallas, TX","incident_latitude":32.8427,"incident_longitude":-96.7801},
-    {"incident_id":"mock-040","incident_offense":"Drugs – Equipment Violations","incident_date":"2025-10-24T18:35:00Z","incident_address":"University Crossing, Dallas, TX","incident_latitude":32.8471,"incident_longitude":-96.7756},
+    {"incident_id":"mock-040","incident_offense":"Drug/Narcotic Violations","incident_date":"2025-10-24T18:35:00Z","incident_address":"University Crossing, Dallas, TX","incident_latitude":32.8471,"incident_longitude":-96.7756},
 
-    {"incident_id":"mock-041","incident_offense":"Animal Cruelty","incident_date":"2025-10-24T18:50:00Z","incident_address":"White Rock Lake, Dallas, TX","incident_latitude":32.8516,"incident_longitude":-96.7174},
+    {"incident_id":"mock-041","incident_offense":"Trespassing","incident_date":"2025-10-24T18:50:00Z","incident_address":"White Rock Lake, Dallas, TX","incident_latitude":32.8516,"incident_longitude":-96.7174},
     {"incident_id":"mock-042","incident_offense":"Bad Checks","incident_date":"2025-10-24T19:05:00Z","incident_address":"Casa Linda, Dallas, TX","incident_latitude":32.8340,"incident_longitude":-96.7089},
 
     {"incident_id":"mock-043","incident_offense":"Burglary/Breaking & Entering","incident_date":"2025-10-24T19:20:00Z","incident_address":"Lakewood, Dallas, TX","incident_latitude":32.8185,"incident_longitude":-96.7585},

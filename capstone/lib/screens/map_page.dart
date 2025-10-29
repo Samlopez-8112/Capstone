@@ -730,6 +730,8 @@ super.initState();
                     onPressed: () {
                       setState(() {
                         isFollowingUser = !isFollowingUser;
+                        _lastCrimes = [];
+                        _showCrimeHeatmap = false;
 
                         // Remove temporary search marker if it exists
                         if (isFollowingUser && _searchMarkerId != null) {
