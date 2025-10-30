@@ -170,54 +170,54 @@ class _SettingsScreenState extends State<SettingsScreen> {
               ),
 
               // ---------------- SAFETY SLIDERS ----------------
-              const SizedBox(height: 30),
-              const Text(
-                "Safety Tolerances",
-                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-              ),
-              SliderPreference(
-                label: "Driving Safety Level",
-                value: _drivingSliderValue,
-                onChanged: (val) => setState(() => _drivingSliderValue = val),
-              ),
-              SliderPreference(
-                label: "Biking Safety Level",
-                value: _bikingSliderValue,
-                onChanged: (val) => setState(() => _bikingSliderValue = val),
-              ),
-              SliderPreference(
-                label: "Walking Safety Level",
-                value: _walkingSliderValue,
-                onChanged: (val) => setState(() => _walkingSliderValue = val),
-              ),
+              // const SizedBox(height: 30),
+              // const Text(
+              //   "Safety Tolerances",
+              //   style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+              // ),
+              // SliderPreference(
+              //   label: "Driving Safety Level",
+              //   value: _drivingSliderValue,
+              //   onChanged: (val) => setState(() => _drivingSliderValue = val),
+              // ),
+              // SliderPreference(
+              //   label: "Biking Safety Level",
+              //   value: _bikingSliderValue,
+              //   onChanged: (val) => setState(() => _bikingSliderValue = val),
+              // ),
+              // SliderPreference(
+              //   label: "Walking Safety Level",
+              //   value: _walkingSliderValue,
+              //   onChanged: (val) => setState(() => _walkingSliderValue = val),
+              // ),
 
-              const SizedBox(height: 12),
-              // --- Prefer areas with (tri-state checkboxes) ---
-              const Text(
-                'Prefer areas with:',
-                style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
-              ),
-              const SizedBox(height: 8),
-              Column(
-                children: [
-                  _TriStateRow(label: 'Well-lit'),
-                  _TriStateRow(label: 'Police presence'),
-                  _TriStateRow(label: 'Quiet at night'),
-                  _TriStateRow(label: 'Busy foot traffic'),
-                  _TriStateRow(label: 'Loitering'),
-                  _TriStateRow(label: 'Graffiti/vandalism'),
-                  _TriStateRow(label: 'Poor lighting'),
-                  _TriStateRow(label: 'Suspicious activity'),
-                  _TriStateRow(label: 'Reports of crime'),
-                  _TriStateRow(label: 'Clean and maintained'),
-                  _TriStateRow(label: 'Security cameras'),
-                  _TriStateRow(label: 'Active neighborhood watch'),
-                  _TriStateRow(label: 'Nearby schools or parks'),
-                  _TriStateRow(label: 'Frequent police sirens'),
-                  _TriStateRow(label: 'Abandoned buildings'),
-                  _TriStateRow(label: 'Shops open late'),
-                ],
-              ),
+              // const SizedBox(height: 12),
+              // // --- Prefer areas with (tri-state checkboxes) ---
+              // const Text(
+              //   'Prefer areas with:',
+              //   style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+              // ),
+              // const SizedBox(height: 8),
+              // Column(
+              //   children: [
+              //     _TriStateRow(label: 'Well-lit'),
+              //     _TriStateRow(label: 'Police presence'),
+              //     _TriStateRow(label: 'Quiet at night'),
+              //     _TriStateRow(label: 'Busy foot traffic'),
+              //     _TriStateRow(label: 'Loitering'),
+              //     _TriStateRow(label: 'Graffiti/vandalism'),
+              //     _TriStateRow(label: 'Poor lighting'),
+              //     _TriStateRow(label: 'Suspicious activity'),
+              //     _TriStateRow(label: 'Reports of crime'),
+              //     _TriStateRow(label: 'Clean and maintained'),
+              //     _TriStateRow(label: 'Security cameras'),
+              //     _TriStateRow(label: 'Active neighborhood watch'),
+              //     _TriStateRow(label: 'Nearby schools or parks'),
+              //     _TriStateRow(label: 'Frequent police sirens'),
+              //     _TriStateRow(label: 'Abandoned buildings'),
+              //     _TriStateRow(label: 'Shops open late'),
+              //   ],
+              // ),
 
 
               // ---------------- ACTION BUTTONS ----------------
